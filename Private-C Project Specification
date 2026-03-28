@@ -1,0 +1,347 @@
+# Cloak — AI Privacy Guard (Implementation Spec)
+
+## 1. Overview
+
+### 1.1 Goal
+
+Build a browser extension that protects users from privacy risks **before they submit data** by:
+
+* detecting risky websites
+* summarizing privacy policies
+* warning during login attempts
+* tracking blocked activity
+
+### 1.2 Core Principle
+
+Prioritize:
+
+* real-time feedback
+* simple explanations
+* clean demo flow
+* minimal but working features
+
+---
+
+## 2. System Architecture
+
+### 2.1 Components
+
+* **Browser Extension (Frontend + Logic)**
+* **AI Layer (Gemini API)**
+* **Voice Layer (ElevenLabs)**
+* **Database (MongoDB Atlas)**
+
+### 2.2 Data Flow
+
+1. User visits site
+2. Extension analyzes page
+3. Sends relevant text to Gemini
+4. Receives risk summary
+5. Displays UI + optional voice alert
+6. Logs event to MongoDB
+
+---
+
+## 3. Features
+
+---
+
+## 3.1 Trust Score System
+
+### Purpose
+
+Quickly classify websites into:
+
+* Safe
+* Caution
+* Risky
+
+### Inputs
+
+* URL
+* page content
+* presence of login fields
+* suspicious keywords
+
+### Logic
+
+* Basic heuristic scoring:
+
+  * HTTP vs HTTPS
+  * suspicious words in URL
+  * number of scripts
+* Send context to Gemini for explanation
+
+### Output
+
+* Score (color-coded)
+* 1–2 line explanation
+
+---
+
+## 3.2 Privacy Policy Summarizer
+
+### Trigger
+
+* When user opens a page with a privacy policy OR signup page
+
+### Steps
+
+1. Extract visible text
+2. Trim to relevant sections (limit size)
+3. Send to Gemini
+
+### Prompt Goal
+
+Return:
+
+* key risks only
+* 1–2 lines max
+
+### Output Example
+
+* “This site shares data with advertisers and stores it long-term.”
+
+---
+
+## 3.3 Login / Phishing Detection
+
+### Trigger
+
+* Detect input fields:
+
+  * password
+  * email
+
+### Steps
+
+1. Identify form elements
+2. Extract:
+
+   * domain
+   * labels
+   * surrounding text
+3. Send structured data to Gemini
+
+### Expected Output
+
+* risk classification
+* short explanation
+
+### UI Behavior
+
+* Show warning popup if risky
+
+---
+
+## 3.4 Voice Alerts (ElevenLabs)
+
+### Trigger
+
+* Only for high-risk events
+
+### Flow
+
+1. Generate warning text
+2. Send to ElevenLabs
+3. Play audio in browser
+
+### Requirements
+
+* toggle ON/OFF
+* avoid overuse (only critical alerts)
+
+---
+
+## 3.5 Tracker Monitoring
+
+### Use Browser APIs
+
+* webRequest
+* cookies
+
+### Track
+
+* blocked requests
+* third-party domains
+* cookie creation
+
+### Output
+
+* count per session
+* count per site
+
+---
+
+## 3.6 Dashboard (Popup UI)
+
+### Show
+
+* current site trust score
+* Gemini explanation
+* trackers blocked (current session)
+* summary stats
+
+### Design
+
+* minimal
+* fast load
+* no heavy styling required
+
+---
+
+## 3.7 Data Storage (MongoDB)
+
+### Store
+
+* site visits (domain, risk level)
+* tracker counts
+* alerts triggered
+
+### Schema (simple)
+
+```
+UserStats {
+  date
+  trackersBlocked
+  riskySites
+  alertsTriggered
+}
+```
+
+### Usage
+
+* fetch weekly summary
+* display in dashboard
+
+---
+
+## 4. APIs Integration
+
+---
+
+## 4.1 Gemini API
+
+### Use Cases
+
+* trust explanation
+* policy summarization
+* phishing detection
+
+### Input Format
+
+* short structured text only
+* avoid sending full pages
+
+### Output Constraints
+
+* max 2 sentences
+* clear, simple language
+
+---
+
+## 4.2 ElevenLabs API
+
+### Use Case
+
+* convert warning text → audio
+
+### Input
+
+* short warning string
+
+### Output
+
+* audio stream
+
+---
+
+## 4.3 MongoDB Atlas
+
+### Use Case
+
+* store + retrieve stats
+
+### Requirements
+
+* simple REST or direct connection
+* minimal queries
+
+---
+
+## 5. Extension Structure
+
+```
+/cloak-extension
+  ├── manifest.json
+  ├── background.js
+  ├── content.js
+  ├── popup.html
+  ├── popup.js
+  ├── styles.css
+  ├── api/
+  │    ├── gemini.js
+  │    ├── elevenlabs.js
+  │    └── db.js
+```
+
+---
+
+## 6. Demo Flow (Must Work)
+
+1. Visit suspicious site
+
+   * trust score appears
+
+2. Show Gemini explanation
+
+3. Trigger voice alert
+
+4. Attempt login
+
+   * phishing warning appears
+
+5. Open extension popup
+
+   * see stats + trackers blocked
+
+---
+
+## 7. Constraints
+
+* Do NOT overbuild
+* Avoid complex sandboxing
+* Keep responses fast
+* Ensure demo reliability
+
+---
+
+## 8. Success Criteria
+
+The project is complete if:
+
+* trust score works
+* Gemini returns summaries
+* login warning triggers
+* voice alert plays
+* dashboard shows stats
+
+---
+
+## 9. Future Extensions (Optional)
+
+* advanced tracking detection
+* multi-device sync
+* stronger ML models
+
+---
+
+## 10. Key Focus
+
+Build a **clean, working demo** where:
+
+* AI explanations are visible
+* warnings feel real
+* UI is responsive
+
+Avoid complexity that cannot be demonstrated clearly.
