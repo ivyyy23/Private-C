@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Private-C Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="mini">PRIVATE-C</p>
+          <h1>Privacy Stats</h1>
+        </div>
+        <span id="accountBadge" class="account-badge">Guest</span>
+      </header>
+
+      <section id="loginPrompt" class="login-prompt hidden">
+        <p>Finish setup to unlock live monitoring and custom preferences.</p>
+        <a href="../dashboard/dist/index.html#/auth/login" target="_blank" rel="noreferrer">Open Setup</a>
+      </section>
+
+      <section id="statsBar" class="stats-grid hidden" aria-live="polite">
+        <article class="stat-card">
+          <p class="label">Cookies Stopped</p>
+          <p id="cookiesStopped" class="value">0</p>
+        </article>
+
+        <article class="stat-card">
+          <p class="label">Privacy Concerns</p>
+          <p id="privacyConcerns" class="value">0</p>
+        </article>
+
+        <article class="stat-card">
+          <p class="label">Blocked Sites</p>
+          <p id="blockedSites" class="value">0</p>
+        </article>
+      </section>
+
+      <section id="preferencesSummary" class="pref-summary hidden">
+        <h2>Active Data Watchlist</h2>
+        <ul id="preferenceList"></ul>
+      </section>
+
+      <section class="dash-actions">
+        <button type="button" id="openDashboard" class="dash-btn">Open full dashboard</button>
+        <p class="dash-hint">Same layout &amp; routes as Private-C-dash (extension tab).</p>
+      </section>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

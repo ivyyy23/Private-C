@@ -1,0 +1,96 @@
+/* Runtime theme: sharp geometry, monochrome, no blue gradients */
+html[data-ui-theme="dark"],
+html:not([data-ui-theme]) {
+  --app-bg: 0 0% 6%;
+  --app-fg: 0 0% 92%;
+  --app-card: 0 0% 9%;
+  --app-card-fg: 0 0% 92%;
+  --app-muted: 0 0% 14%;
+  --app-muted-fg: 0 0% 55%;
+  --app-border: 0 0% 18%;
+  --app-input: 0 0% 14%;
+  --app-primary: 0 0% 88%;
+  --app-primary-fg: 0 0% 6%;
+  --app-accent: 0 0% 22%;
+  --app-accent-fg: 0 0% 92%;
+  --app-destructive: 0 55% 42%;
+  --app-destructive-fg: 0 0% 98%;
+  --app-success: 142 35% 40%;
+  --app-success-fg: 0 0% 98%;
+  --app-warning: 45 80% 48%;
+  --app-warning-fg: 0 0% 8%;
+  --app-sidebar: 0 0% 4%;
+  --app-sidebar-fg: 0 0% 62%;
+  --app-sidebar-accent: 0 0% 10%;
+  --app-sidebar-border: 0 0% 14%;
+  --app-ring: 0 0% 40%;
+  --app-overlay: 0 0% 100% / 0.04;
+  color-scheme: dark;
+}
+
+html[data-ui-theme="light"] {
+  --app-bg: 0 0% 97%;
+  --app-fg: 0 0% 12%;
+  --app-card: 0 0% 100%;
+  --app-card-fg: 0 0% 12%;
+  --app-muted: 0 0% 92%;
+  --app-muted-fg: 0 0% 40%;
+  --app-border: 0 0% 82%;
+  --app-input: 0 0% 90%;
+  --app-primary: 0 0% 15%;
+  --app-primary-fg: 0 0% 98%;
+  --app-accent: 0 0% 90%;
+  --app-accent-fg: 0 0% 12%;
+  --app-destructive: 0 55% 42%;
+  --app-destructive-fg: 0 0% 98%;
+  --app-success: 142 35% 36%;
+  --app-success-fg: 0 0% 98%;
+  --app-warning: 45 90% 40%;
+  --app-warning-fg: 0 0% 8%;
+  --app-sidebar: 0 0% 94%;
+  --app-sidebar-fg: 0 0% 38%;
+  --app-sidebar-accent: 0 0% 88%;
+  --app-sidebar-border: 0 0% 82%;
+  --app-ring: 0 0% 45%;
+  --app-overlay: 0 0% 0% / 0.06;
+  color-scheme: light;
+}
+
+html {
+  background: hsl(var(--app-bg));
+  color: hsl(var(--app-fg));
+}
+
+/* Scan-line accent: subtle animated edge on auth panel */
+@keyframes pc-scan {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.5;
+  }
+  85% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+.pc-scan-border {
+  position: relative;
+  overflow: hidden;
+}
+.pc-scan-border::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(var(--app-fg) / 0.25), transparent);
+  animation: pc-scan 4s ease-in-out infinite;
+  pointer-events: none;
+}

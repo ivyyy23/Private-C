@@ -1,0 +1,12 @@
+# Private-C — dependency note
+#
+# This repository does not include Python application code. The extension and
+# HTTP API are implemented in JavaScript (Node.js). Install runtime deps with:
+#
+#   cd dashboard && npm install
+#   cd server    && npm install
+#
+# Exact versions are pinned in package-lock.json under dashboard/ and server/.
+#
+# If you add Python scripts or tooling later, list pip packages below, e.g.:
+# requests>=2.31.0

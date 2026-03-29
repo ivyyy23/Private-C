@@ -1,0 +1,10 @@
+{
+  "name": "private-c",
+  "private": true,
+  "scripts": {
+    "start:server": "cd server && npm start",
+    "start:server:memory": "cd server && SKIP_MONGO=1 npm start",
+    "start:dashboard": "cd dashboard && npm run dev -- --host 127.0.0.1",
+    "start:all": "node scripts/start-all.mjs"
+  }
+}
