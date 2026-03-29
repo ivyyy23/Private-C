@@ -27,6 +27,7 @@
     "service_worker": "background/background.js"
   },
   "permissions": [
+    "alarms",
     "storage",
     "tabs",
     "tts",

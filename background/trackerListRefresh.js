@@ -25,6 +25,10 @@
 
   function rebuildWorkingRules(dynamicRows) {
     const staticRef = self.PC_TRACKER_STATIC_RULES || self.PC_TRACKER_RULES;
+    if (!Array.isArray(staticRef) || staticRef.length === 0) {
+      console.warn("Private-C: built-in tracker catalog missing; dynamic rules skipped");
+      return;
+    }
     const staticSuffixes = new Set(staticRef.map((r) => r.suffix));
     const merged = staticRef.slice();
     for (const row of dynamicRows) {
@@ -62,6 +66,9 @@
     const text = await res.text();
     const hosts = parseEasyPrivacyHosts(text);
     const staticRef = self.PC_TRACKER_STATIC_RULES || self.PC_TRACKER_RULES;
+    if (!Array.isArray(staticRef) || staticRef.length === 0) {
+      throw new Error("Built-in tracker catalog not loaded");
+    }
     const staticSuffixes = new Set(staticRef.map((r) => r.suffix));
     const dynamicRows = [];
     for (const suffix of hosts) {

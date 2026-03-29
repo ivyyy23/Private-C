@@ -133,6 +133,85 @@ function tabScanSessionKey(tabId) {
   return `tabScan_${tabId}`;
 }
 
+function tabEffectiveUrl(t) {
+  if (!t) return "";
+  const u = t.url || t.pendingUrl;
+  return typeof u === "string" ? u : "";
+}
+
+function isExtensionOrEmptyUrl(url) {
+  if (!url || typeof url !== "string") return true;
+  const u = url.toLowerCase();
+  return (
+    u.startsWith("chrome-extension://") ||
+    u.startsWith("moz-extension://") ||
+    u.startsWith("edge-extension://") ||
+    u.startsWith("safari-web-extension://") ||
+    u.startsWith("devtools://")
+  );
+}
+
+function tabIsUsableForPopup(t) {
+  const u = tabEffectiveUrl(t);
+  return t?.id != null && u.length > 0 && !isExtensionOrEmptyUrl(u);
+}
+
+/**
+ * Best tab to show in the toolbar popup for `windowId` (usually last-focused browser window).
+ * If the active tab is the extension UI or another restricted URL, use the most recently
+ * accessed normal tab in that window so the popup is never “empty” while a real page is open.
+ */
+async function pickBestTabInWindow(windowId) {
+  if (windowId == null) return null;
+  let tabs;
+  try {
+    tabs = await chrome.tabs.query({ windowId });
+  } catch {
+    return null;
+  }
+  if (!tabs?.length) return null;
+  const usable = tabs.filter(tabIsUsableForPopup);
+  if (usable.length === 0) return null;
+  const activeOk = usable.find((t) => t.active);
+  if (activeOk) return activeOk;
+  usable.sort((a, b) => (Number(b.lastAccessed) || 0) - (Number(a.lastAccessed) || 0));
+  return usable[0] || null;
+}
+
+/**
+ * Tab the user is actually browsing. While the toolbar popup is open,
+ * `currentWindow` often points at the wrong window; prefer last-focused normal window.
+ */
+async function getActiveTabForPopupContext() {
+  try {
+    const w = await chrome.windows.getLastFocused({ windowTypes: ["normal"] });
+    if (w?.id != null) {
+      const tab = await pickBestTabInWindow(w.id);
+      if (tab) {
+        const u = tabEffectiveUrl(tab);
+        return { ...tab, url: u };
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  let list = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  let tab = list.find(tabIsUsableForPopup) || null;
+  if (!tab) {
+    list = await chrome.tabs.query({ active: true, currentWindow: true });
+    tab = list.find(tabIsUsableForPopup) || null;
+  }
+  if (!tab) {
+    list = await chrome.tabs.query({ active: true });
+    tab = list.find(tabIsUsableForPopup) || null;
+  }
+  if (!tab) return null;
+  const u = tabEffectiveUrl(tab);
+  if (!u) return null;
+  return { ...tab, url: u };
+}
+
 chrome.tabs.onRemoved.addListener((tabId) => {
   chrome.storage.session.remove(tabScanSessionKey(tabId)).catch(() => {});
   if (typeof self.pcClearDNRForTab === "function") {
@@ -713,7 +792,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         const blockedHostsCount = Object.entries(state.blockedSitesByHost || {}).filter(([, v]) => v).length;
 
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tab = await getActiveTabForPopupContext();
         let host = "";
         let eligible = false;
         if (tab?.url) {

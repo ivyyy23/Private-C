@@ -142,10 +142,17 @@ function renderTabTrackers(list, eligible) {
   });
 }
 
+function effectiveTabUrl(tab) {
+  if (!tab) return "";
+  const u = tab.url || tab.pendingUrl;
+  return typeof u === "string" ? u : "";
+}
+
 function setSiteHero(tab) {
   if (!ui.popupSiteHostname) return;
 
-  if (!tab || !tab.url) {
+  const pageUrl = effectiveTabUrl(tab);
+  if (!tab || !pageUrl) {
     ui.popupSiteHostname.textContent = "—";
     if (ui.popupPageUrlFull) {
       ui.popupPageUrlFull.textContent = "";
@@ -159,20 +166,20 @@ function setSiteHero(tab) {
   let displayHost = tab.host || "";
   if (!displayHost) {
     try {
-      displayHost = new URL(tab.url).hostname;
+      displayHost = new URL(pageUrl).hostname;
     } catch {
-      displayHost = "Page";
+      displayHost = "";
     }
   }
   ui.popupSiteHostname.textContent = displayHost || "Page";
 
   if (ui.popupPageUrlFull) {
-    ui.popupPageUrlFull.textContent = tab.url;
-    ui.popupPageUrlFull.title = tab.url;
+    ui.popupPageUrlFull.textContent = pageUrl;
+    ui.popupPageUrlFull.title = pageUrl;
   }
 
   if (ui.popupSiteMeta) {
-    if (tab.eligible && tab.host) {
+    if (tab.eligible && (tab.host || displayHost)) {
       ui.popupSiteMeta.textContent =
         "HTTPS site — per-site controls and live tracker list apply.";
     } else {
@@ -186,6 +193,9 @@ function renderThisPage(ctx) {
   popupTabId = null;
   popupHost = "";
 
+  const tab = ctx?.tab ?? null;
+  setSiteHero(tab);
+
   if (!ui.thisPageSection || !ui.pageScanAgent) return;
   ui.thisPageSection.classList.remove("hidden");
   ui.onPageBannerHint?.classList.add("hidden");
@@ -197,16 +207,26 @@ function renderThisPage(ctx) {
   ui.tabTrackersWrap?.classList.add("hidden");
   ui.tabTrackersEmpty?.classList.add("hidden");
 
-  const tab = ctx.tab;
-  setSiteHero(tab);
+  ui.pageScanAgent.textContent = "Reading this tab…";
 
-  if (!tab || !tab.url) {
+  const pageUrl = effectiveTabUrl(tab);
+  if (!tab || !pageUrl) {
     ui.pageScanAgent.textContent = "No active tab.";
     renderTabTrackers([], false);
     return;
   }
 
-  if (!tab.eligible || !tab.host) {
+  const tabHost =
+    tab.host ||
+    (() => {
+      try {
+        return new URL(pageUrl).hostname.toLowerCase();
+      } catch {
+        return "";
+      }
+    })();
+
+  if (!tab.eligible || !tabHost) {
     ui.pageScanAgent.textContent =
       "Page snapshot runs on standard https sites. This URL does not get the on-page scanner or per-site blocking UI.";
     if (ui.popupSessionTrackers) {
@@ -218,10 +238,10 @@ function renderThisPage(ctx) {
   }
 
   popupTabId = tab.id;
-  popupHost = tab.host;
+  popupHost = tabHost;
   ui.focusThisTab.hidden = false;
   ui.openPageNewTab.hidden = false;
-  ui.openPageNewTab.href = tab.url;
+  ui.openPageNewTab.href = pageUrl;
 
   ui.pageScanAgent.textContent = ctx.scan ? formatScanSummary(ctx.scan) : formatScanSummary(null);
 
@@ -231,23 +251,37 @@ function renderThisPage(ctx) {
 
   renderTabTrackers(ctx.trackersForTab, true);
 
-  if (ctx.sitePrefs) {
-    const decided = !!ctx.sitePrefs.decided;
-    const useToolbarFallback = preferToolbarSitePrefsForHost === tab.host;
+  const sp = ctx.sitePrefs;
+  if (sp) {
+    const decided = !!sp.decided;
+    const useToolbarFallback = preferToolbarSitePrefsForHost === tabHost;
     if (!decided && !useToolbarFallback) {
       ui.onPageBannerHint?.classList.remove("hidden");
-      ui.sitePrefsInline?.classList.add("hidden");
     } else {
       ui.onPageBannerHint?.classList.add("hidden");
-      ui.sitePrefsInline?.classList.remove("hidden");
-      allowAllChoice = !!ctx.sitePrefs.allowAll;
-      syncPrefToggles();
-      if (ui.siteRulesSummary && ctx.sitePrefs.rulesSummary) {
-        ui.siteRulesSummary.textContent = `Saved rule: ${ctx.sitePrefs.rulesSummary}`;
+    }
+    ui.sitePrefsInline?.classList.remove("hidden");
+    allowAllChoice = !!sp.allowAll;
+    syncPrefToggles();
+    if (ui.siteRulesSummary) {
+      if (!decided) {
+        ui.siteRulesSummary.textContent =
+          "Not saved yet — pick Block all, Allow all, or Select choices, then Save.";
+      } else {
+        ui.siteRulesSummary.textContent = `Saved rule: ${sp.rulesSummary || "—"}`;
       }
     }
-    if (decided && preferToolbarSitePrefsForHost === tab.host) {
+    if (decided && preferToolbarSitePrefsForHost === tabHost) {
       preferToolbarSitePrefsForHost = "";
+    }
+  } else {
+    ui.onPageBannerHint?.classList.add("hidden");
+    ui.sitePrefsInline?.classList.remove("hidden");
+    allowAllChoice = false;
+    syncPrefToggles();
+    if (ui.siteRulesSummary) {
+      ui.siteRulesSummary.textContent =
+        "Pick Block all, Allow all, or Select choices, then Save for this site.";
     }
   }
 }

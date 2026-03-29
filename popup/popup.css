@@ -67,6 +67,8 @@ body {
 .popup-body-scroll {
   flex: 1;
   min-height: 0;
+  /* Avoid collapsed scroll area when the host flex parent has no explicit height (popup sizing). */
+  min-height: 220px;
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
