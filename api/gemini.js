@@ -7,16 +7,31 @@
 //   3. detectPhishing       — assesses phishing risk on login pages
 //
 // All responses are max 2 sentences, plain language, valid JSON.
-// Graceful fallback to mock responses on API failure.
+// On API or parse failure, functions throw — callers must handle (no fake “AI” text).
 // =============================================================================
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
-const GEMINI_API_KEY = typeof process !== "undefined" && process?.env?.GEMINI_API_KEY ? process.env.GEMINI_API_KEY : ""; // Set via environment variable GEMINI_API_KEY
-const GEMINI_MODEL = "gemini-2.0-flash";
-const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+/** Read at call time so `dotenv` / env injection applies before first request. */
+function getGeminiApiKey() {
+  return typeof process !== "undefined" && process.env?.GEMINI_API_KEY
+    ? String(process.env.GEMINI_API_KEY).trim()
+    : "";
+}
+
+function getGeminiModel() {
+  return (
+    (typeof process !== "undefined" && process.env?.GEMINI_MODEL && String(process.env.GEMINI_MODEL).trim()) ||
+    "gemini-2.0-flash"
+  );
+}
+
+function getGeminiEndpoint() {
+  const model = getGeminiModel();
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+}
 
 // ---------------------------------------------------------------------------
 // Internal: call Gemini API
@@ -29,12 +44,12 @@ const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models
  * @throws Will throw on network / API errors.
  */
 async function callGemini(prompt) {
-  const apiKey = GEMINI_API_KEY;
+  const apiKey = getGeminiApiKey();
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not set. Please configure your API key.");
   }
 
-  const response = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
+  const response = await fetch(`${getGeminiEndpoint()}?key=${apiKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -125,37 +140,13 @@ Explain in 1–2 short sentences why this site received this score. Use simple, 
 Respond ONLY with a valid JSON object in this exact format (no extra text):
 {"explanation": "your explanation here"}`;
 
-  try {
-    const raw = await callGemini(prompt);
-    const parsed = parseJSON(raw);
+  const raw = await callGemini(prompt);
+  const parsed = parseJSON(raw);
 
-    if (typeof parsed.explanation !== "string" || !parsed.explanation) {
-      throw new Error("Missing 'explanation' field in response.");
-    }
-    return { explanation: parsed.explanation };
-  } catch (err) {
-    console.error("[CloakAI] getTrustExplanation failed:", err.message);
-    return getFallbackTrustExplanation(heuristicScore);
+  if (typeof parsed.explanation !== "string" || !parsed.explanation) {
+    throw new Error("Missing 'explanation' field in response.");
   }
-}
-
-/**
- * Fallback mock response when API is unavailable.
- */
-function getFallbackTrustExplanation(heuristicScore) {
-  const messages = {
-    safe: "This site appears to be safe based on its domain and content.",
-    caution:
-      "This site has some characteristics that suggest you should be cautious before sharing personal information.",
-    risky:
-      "This site shows multiple warning signs that could indicate it is unsafe. Avoid entering personal data.",
-  };
-
-  return {
-    explanation:
-      messages[heuristicScore] ||
-      "We couldn't fully analyze this site. Proceed with caution.",
-  };
+  return { explanation: parsed.explanation };
 }
 
 // =============================================================================
@@ -190,21 +181,13 @@ Privacy policy text:
 Respond ONLY with a valid JSON object in this exact format (no extra text):
 {"summary": "your summary here"}`;
 
-  try {
-    const raw = await callGemini(prompt);
-    const parsed = parseJSON(raw);
+  const raw = await callGemini(prompt);
+  const parsed = parseJSON(raw);
 
-    if (typeof parsed.summary !== "string" || !parsed.summary) {
-      throw new Error("Missing 'summary' field in response.");
-    }
-    return { summary: parsed.summary };
-  } catch (err) {
-    console.error("[CloakAI] summarizePolicy failed:", err.message);
-    return {
-      summary:
-        "We couldn't analyze this privacy policy right now. Review it manually before sharing personal information.",
-    };
+  if (typeof parsed.summary !== "string" || !parsed.summary) {
+    throw new Error("Missing 'summary' field in response.");
   }
+  return { summary: parsed.summary };
 }
 
 // =============================================================================
@@ -245,28 +228,18 @@ Then provide a short warning message (1–2 sentences, simple language).
 Respond ONLY with a valid JSON object in this exact format (no extra text):
 {"risk": "low or medium or high", "message": "your warning here"}`;
 
-  try {
-    const raw = await callGemini(prompt);
-    const parsed = parseJSON(raw);
+  const raw = await callGemini(prompt);
+  const parsed = parseJSON(raw);
 
-    // Validate risk field
-    const validRisks = ["low", "medium", "high"];
-    if (!validRisks.includes(parsed.risk)) {
-      throw new Error(`Invalid risk value: ${parsed.risk}`);
-    }
-    if (typeof parsed.message !== "string" || !parsed.message) {
-      throw new Error("Missing 'message' field in response.");
-    }
-
-    return { risk: parsed.risk, message: parsed.message };
-  } catch (err) {
-    console.error("[CloakAI] detectPhishing failed:", err.message);
-    return {
-      risk: "medium",
-      message:
-        "We couldn't fully verify this login page. Be cautious before entering your credentials.",
-    };
+  const validRisks = ["low", "medium", "high"];
+  if (!validRisks.includes(parsed.risk)) {
+    throw new Error(`Invalid risk value: ${parsed.risk}`);
   }
+  if (typeof parsed.message !== "string" || !parsed.message) {
+    throw new Error("Missing 'message' field in response.");
+  }
+
+  return { risk: parsed.risk, message: parsed.message };
 }
 
 // =============================================================================

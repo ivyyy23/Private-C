@@ -5,6 +5,12 @@
     "start:server": "cd server && npm start",
     "start:server:memory": "cd server && SKIP_MONGO=1 npm start",
     "start:dashboard": "cd dashboard && npm run dev -- --host 127.0.0.1",
-    "start:all": "node scripts/start-all.mjs"
+    "start:all": "node scripts/start-all.mjs",
+    "test:gemini-mock": "node api/gemini.test.mock.js",
+    "test:gemini": "cd server && node -r dotenv/config ../api/gemini.test.js",
+    "test:gemini-live": "node -r ./server/node_modules/dotenv/config api/gemini-live-check.js dotenv_config_path=server/.env",
+    "test:server-smoke": "node scripts/smoke-api.mjs",
+    "test": "npm run test:gemini-mock && npm run test:server-smoke",
+    "seed:dummy": "cd server && node ../scripts/seed-dummy-data.mjs"
   }
 }

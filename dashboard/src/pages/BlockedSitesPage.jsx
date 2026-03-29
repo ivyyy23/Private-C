@@ -1,6 +1,5 @@
 import { useMemo, useState, useCallback } from "react";
 import { Search, Filter, ChevronRight } from "lucide-react";
-import { blocked_sites } from "../data/mockData.js";
 import { Card } from "../components/Card.jsx";
 import { Badge } from "../components/Badge.jsx";
 import { Header } from "../components/Header.jsx";
@@ -10,13 +9,6 @@ import { useExtensionState } from "../hooks/useExtensionState.js";
 import { patchExtensionState } from "../lib/extensionBridge.js";
 
 const RISK_LEVELS = ["all", "critical", "high", "medium", "low"];
-
-function hostKeyFromUrl(url) {
-  return String(url || "")
-    .toLowerCase()
-    .replace(/^www\./, "")
-    .trim();
-}
 
 export default function BlockedSitesPage() {
   const { state, hasChrome } = useExtensionState();
@@ -31,35 +23,19 @@ export default function BlockedSitesPage() {
       .filter(([, v]) => v)
       .map(([h]) => h.toLowerCase());
 
-    const mockByHost = {};
-    for (const s of blocked_sites) {
-      mockByHost[hostKeyFromUrl(s.url)] = s;
-    }
-
-    const seen = new Set();
-    const out = [];
-
-    for (const host of blockedHosts) {
-      const base = mockByHost[host] || {
-        id: `live-${host}`,
-        url: host,
-        reason: "Flagged by Private-C",
-        risk_level: "medium",
-        timestamp: new Date().toISOString(),
-        action: "blocked",
-      };
-      out.push({ ...base, hostKey: host });
-      seen.add(host);
-    }
-
-    for (const s of blocked_sites) {
-      const hk = hostKeyFromUrl(s.url);
-      if (!seen.has(hk)) {
-        out.push({ ...s, hostKey: hk });
-      }
-    }
-
-    return out;
+    return blockedHosts.map((host) => ({
+      id: `live-${host}`,
+      hostKey: host,
+      url: host,
+      reason: "Threat-flagged site",
+      risk_level: "high",
+      timestamp: null,
+      action: "blocked",
+      plain_reason:
+        "Private-C recorded this hostname after a threat signal while browsing. You can allow all cookies and trackers for this host from the table if you fully trust it.",
+      technical_reason: "Host appears in extension blockedSitesByHost state (incremented when a configured threat pattern matched).",
+      recommendation: "Leave blocked unless you intentionally trust this domain.",
+    }));
   }, [state?.blockedSitesByHost]);
 
   const filtered = useMemo(() => {
@@ -92,7 +68,10 @@ export default function BlockedSitesPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <Header title="Blocked Sites" subtitle={`${rows.length} entries · Allow all turns off Private-C threat handling for that host`} />
+      <Header
+        title="Blocked Sites"
+        subtitle={`${rows.length} live · Hosts recorded by Private-C in this profile (no demo rows)`}
+      />
 
       <main className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-6">
         <div className="flex flex-col gap-3 sm:flex-row">
@@ -129,7 +108,11 @@ export default function BlockedSitesPage() {
 
         <Card glow>
           {filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">No results match your filters.</p>
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              {rows.length === 0
+                ? "No blocked sites in storage yet. When Private-C flags a configured threat host, it will appear here."
+                : "No results match your filters."}
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -162,7 +145,7 @@ export default function BlockedSitesPage() {
                           <Badge level={row.risk_level} />
                         </td>
                         <td className="whitespace-nowrap py-3 pr-4 text-xs text-muted-foreground">
-                          {new Date(row.timestamp).toLocaleString()}
+                          {row.timestamp ? new Date(row.timestamp).toLocaleString() : "—"}
                         </td>
                         <td className="py-3 pr-4">
                           <span className="rounded-none border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs capitalize text-emerald-400">

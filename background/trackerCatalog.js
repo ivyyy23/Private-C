@@ -141,7 +141,35 @@
     { suffix: "m.stripe.network", category: "analytics", label: "Stripe" },
   ];
 
-  self.PC_TRACKER_RULES = RAW.sort((a, b) => b.suffix.length - a.suffix.length);
+  const sorted = RAW.sort((a, b) => b.suffix.length - a.suffix.length);
+  /** Immutable built-in list; EasyPrivacy / dynamic rows are merged into {@link PC_TRACKER_RULES} at runtime. */
+  self.PC_TRACKER_STATIC_RULES = sorted;
+  self.PC_TRACKER_RULES = sorted.slice();
+
+  /**
+   * True if the request host is a literal IPv4 or IPv6 address (not a DNS name).
+   * Used for logging and to align with DNR regex rules that block such third-party requests.
+   */
+  self.pcIsIpLiteralHostname = function pcIsIpLiteralHostname(hostname) {
+    if (!hostname || typeof hostname !== "string") return false;
+    let h = hostname.trim().toLowerCase();
+    if (h.startsWith("[") && h.endsWith("]")) {
+      h = h.slice(1, -1);
+    }
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) {
+      const parts = h.split(".");
+      return parts.every((p) => {
+        if (!/^\d{1,3}$/.test(p)) return false;
+        const n = Number(p);
+        return n >= 0 && n <= 255;
+      });
+    }
+    if (h.includes(":")) {
+      if (h.includes(":::")) return false;
+      return /^[0-9a-f:.]+$/i.test(h) && h.split(":").length >= 2;
+    }
+    return false;
+  };
 
   /**
    * @param {string} hostname
@@ -156,6 +184,9 @@
       if (h === s || (h.length > s.length && h.endsWith("." + s))) {
         return { suffix: s, category: rule.category, label: rule.label };
       }
+    }
+    if (self.pcIsIpLiteralHostname(h)) {
+      return { suffix: h, category: "ip endpoint", label: "Third-party IP address endpoint" };
     }
     return null;
   };

@@ -4,13 +4,13 @@ import { Card } from "../components/Card.jsx";
 import { Header } from "../components/Header.jsx";
 import { DetailDrawer } from "../components/DetailDrawer.jsx";
 import { useTrackerLog } from "../hooks/useTrackerLog.js";
-import { tracker_activity as mock_trackers } from "../data/mockData.js";
 
 const CATEGORY_STYLE = {
   "ad network": "bg-red-500/12 text-red-400 border-red-500/25",
   "session recording": "bg-orange-500/12 text-orange-400 border-orange-500/25",
   "social tracker": "bg-purple-500/12 text-purple-400 border-purple-500/25",
   fingerprinting: "bg-yellow-500/12 text-yellow-400 border-yellow-500/25",
+  "ip endpoint": "bg-amber-500/12 text-amber-400 border-amber-500/25",
   retargeting: "bg-cyan-500/12 text-cyan-400 border-cyan-500/25",
   analytics: "bg-sky-500/12 text-sky-400 border-sky-500/25",
   "tag manager": "bg-violet-500/12 text-violet-400 border-violet-500/25",
@@ -23,28 +23,25 @@ export default function TrackerActivityPage() {
   const { log, hydrated } = useTrackerLog();
 
   const hasChrome = typeof chrome !== "undefined" && !!chrome.storage?.local;
+
   const rows = useMemo(() => {
     const q = search.toLowerCase();
-    const source = hasChrome && hydrated && log.length > 0 ? log : mock_trackers;
-    return source.filter(
+    return log.filter(
       (t) =>
         (t.tracker_domain || "").toLowerCase().includes(q) ||
         (t.source_site || "").toLowerCase().includes(q) ||
         (t.category || "").toLowerCase().includes(q)
     );
-  }, [search, log, hydrated, hasChrome]);
+  }, [search, log]);
 
-  const totalHits = useMemo(() => {
-    if (!hasChrome || !log.length) return rows.length;
-    return log.reduce((acc, t) => acc + (t.hit_count || 1), 0);
-  }, [log, rows.length, hasChrome]);
+  const totalHits = useMemo(() => log.reduce((acc, t) => acc + (t.hit_count || 1), 0), [log]);
 
   const subtitle =
-    hasChrome && log.length > 0
-      ? `${log.length} tracker hosts · ${totalHits} network requests logged (live)`
-      : hasChrome && hydrated
-        ? `${mock_trackers.length} sample rows · browse with the extension to capture live requests`
-        : `${mock_trackers.length} trackers (demo)`;
+    !hasChrome || !hydrated
+      ? "Loading…"
+      : log.length > 0
+        ? `${log.length} tracker host${log.length === 1 ? "" : "s"} · ${totalHits} network hits (live log)`
+        : "No entries yet — browse HTTPS sites with the extension to record classified requests";
 
   return (
     <div className="flex-1 flex flex-col bg-background">
@@ -53,8 +50,8 @@ export default function TrackerActivityPage() {
       <main className="flex-1 px-6 py-6 space-y-4">
         {hasChrome && hydrated && log.length === 0 && (
           <p className="text-sm text-muted-foreground border border-border bg-card/50 px-3 py-2 rounded-none">
-            No tracker-classified requests recorded yet. Visit a news or retail site over HTTPS, then refresh this page.
-            Private-C matches requests against a built-in tracker domain list (network-level, not a full ad blocker).
+            No tracker-classified requests in storage yet. Visit a typical news or retail site, then data appears here
+            automatically as the background logger flushes (usually within a second).
           </p>
         )}
 
@@ -112,7 +109,7 @@ export default function TrackerActivityPage() {
           ))}
         </div>
 
-        {rows.length === 0 && (
+        {rows.length === 0 && log.length > 0 && (
           <p className="text-sm text-muted-foreground text-center py-8">No trackers match your search.</p>
         )}
       </main>

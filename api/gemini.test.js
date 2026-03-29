@@ -7,7 +7,7 @@
 //   Windows:  set GEMINI_API_KEY=your-key-here
 //   Mac/Linux: export GEMINI_API_KEY=your-key-here
 //
-// If no key is set, fallback responses will be exercised instead.
+// Requires GEMINI_API_KEY in the environment; without it, calls throw (no simulated output).
 // =============================================================================
 
 const { getTrustExplanation, summarizePolicy, detectPhishing } = require("./gemini.js");

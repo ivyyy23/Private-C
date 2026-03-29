@@ -6,10 +6,10 @@ import {
   KeyRound,
   FileBarChart2,
   Settings,
-  ShieldCheck,
 } from "lucide-react";
 import clsx from "clsx";
 import { useExtensionState } from "../hooks/useExtensionState.js";
+import { useBrandLogo } from "../hooks/useBrandLogo.js";
 
 const links = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -21,6 +21,7 @@ const links = [
 ];
 
 export function Sidebar() {
+  const brandLogo = useBrandLogo();
   const { state } = useExtensionState();
   const accountHint = state?.isLoggedIn && state?.account?.email
     ? state.account.email
@@ -29,8 +30,12 @@ export function Sidebar() {
   return (
     <nav className="w-60 min-h-screen bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col shrink-0">
       <div className="px-5 py-5 border-b border-sidebar-border flex items-center gap-3">
-        <div className="w-8 h-8 rounded-none bg-muted border border-border flex items-center justify-center">
-          <ShieldCheck size={16} className="text-foreground" />
+        <div className="w-9 h-9 rounded-none bg-muted border border-border flex items-center justify-center overflow-hidden shrink-0">
+          {brandLogo ? (
+            <img src={brandLogo} alt="" className="w-full h-full object-contain" width={36} height={36} />
+          ) : (
+            <span className="text-[10px] font-bold text-muted-foreground">PC</span>
+          )}
         </div>
         <div>
           <p className="font-semibold text-foreground tracking-tight text-sm leading-none">Private-C</p>
@@ -63,7 +68,9 @@ export function Sidebar() {
       <div className="px-5 py-4 border-t border-sidebar-border space-y-2">
         <div className="rounded-none bg-muted/40 border border-border p-3">
           <div className="flex items-center gap-2 mb-0.5">
-            <ShieldCheck size={14} className="text-foreground shrink-0" />
+            {brandLogo ? (
+              <img src={brandLogo} alt="" className="w-3.5 h-3.5 object-contain shrink-0" width={14} height={14} />
+            ) : null}
             <span className="text-xs font-medium text-foreground">Protection</span>
           </div>
           <p className="text-[10px] text-muted-foreground leading-snug truncate" title={accountHint}>

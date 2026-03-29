@@ -28,9 +28,13 @@ function ShieldGlyph({ className }) {
  * Count (top-left), View all → modal with blurred backdrop, Clear all outside strip.
  * Strip shows one line; X advances to next.
  */
-export function DetectionsStrip({ initialItems = [] }) {
-  const [items, setItems] = useState(() => initialItems.slice(0, 5));
+export function DetectionsStrip({ items: itemsProp = [] }) {
+  const [items, setItems] = useState(() => itemsProp.slice(0, 5));
   const [allOpen, setAllOpen] = useState(false);
+
+  useEffect(() => {
+    setItems(itemsProp.slice(0, 5));
+  }, [itemsProp]);
 
   const clearAll = useCallback(() => {
     setItems([]);

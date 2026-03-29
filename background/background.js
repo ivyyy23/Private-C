@@ -1,6 +1,9 @@
 importScripts("trackerCatalog.js");
+importScripts("trackerListRefresh.js");
+importScripts("threatIntel.js");
+importScripts("dnrSession.js");
 
-/** Bundled API base (not user-configurable). Set at build/deploy if needed. */
+/** Default sync API (local Private-C server). Override with `serverApiBase` in extension state (e.g. dashboard patch) for a deployed backend. */
 const DEFAULT_API_BASE = "http://127.0.0.1:3847";
 
 const TRACKER_LOG_KEY = "privateCTrackerLog";
@@ -81,27 +84,24 @@ const DEFAULT_STATE = {
   allowAllTrackingByHost: {},
   /** Hostname → user completed the first-visit privacy prompt (any choice). */
   firstVisitDecided: {},
-};
-
-const THREAT_HOSTS = {
-  "malware-test.example": {
-    severity: "high",
-    reason: "Known malware distribution patterns detected",
-    assistantLine:
-      "High-risk site flagged. I recommend closing this session and avoiding downloads.",
-  },
-  "track-heavy.example": {
-    severity: "medium",
-    reason: "Aggressive cross-site tracking scripts identified",
-    assistantLine:
-      "Tracker activity detected. Cookie Cutter recommends blocking background session tracking.",
-  },
-  "phishy-login.example": {
-    severity: "high",
-    reason: "Phishing-like login behavior patterns detected",
-    assistantLine:
-      "Credential trap suspected. Do not enter passwords or MFA on this page.",
-  },
+  /** Per-host granular rules: cookies, trackers, storage, permissions, accountProtection */
+  sitePrivacyRules: {},
+  /** Console + DNR verbose logging */
+  devLogging: false,
+  /** Optional HTTPS origin for Private-C API (state sync, site-evaluation, auth). Empty = DEFAULT_API_BASE. */
+  serverApiBase: "",
+  /** Bearer JWT from POST /api/auth/login — sent on authenticated API calls when implemented server-side. */
+  authToken: "",
+  /** Google Safe Browsing v4 API key (AI Studio / Cloud console). */
+  safeBrowsingApiKey: "",
+  /** PhishTank application key (https://phishtank.com/api_register.php). */
+  phishtankApiKey: "",
+  /** abuse.ch Auth-Key if your URLhaus tier requires it. */
+  urlhausAuthKey: "",
+  /** Query URLhaus for malware hosts (on by default). */
+  threatIntelUrlhausEnabled: true,
+  /** Threat intel positive/negative cache TTL (ms). */
+  threatIntelCacheTtlMs: 45 * 60 * 1000,
 };
 
 function shouldOfferFirstVisitChoice(url, host) {
@@ -135,7 +135,126 @@ function tabScanSessionKey(tabId) {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   chrome.storage.session.remove(tabScanSessionKey(tabId)).catch(() => {});
+  if (typeof self.pcClearDNRForTab === "function") {
+    self.pcClearDNRForTab(tabId).catch(() => {});
+  }
 });
+
+const spaNavDebounce = new Map();
+
+async function applyMainWorldEnforcement(tabId, rules) {
+  if (tabId == null || tabId < 0 || !rules) return;
+  const need =
+    rules.storage?.blockLocal ||
+    rules.storage?.blockSession ||
+    rules.permissions?.geoBlocked ||
+    rules.permissions?.cameraBlocked ||
+    rules.permissions?.micBlocked;
+  if (!need) return;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId, allFrames: false },
+      world: "MAIN",
+      func: (cfg) => {
+        if (cfg.storage?.blockLocal) {
+          try {
+            const deny = {
+              getItem() {
+                return null;
+              },
+              setItem() {},
+              removeItem() {},
+              clear() {},
+              key() {
+                return null;
+              },
+              get length() {
+                return 0;
+              },
+            };
+            Object.defineProperty(window, "localStorage", { configurable: true, get: () => deny });
+          } catch (e) {
+            /* ignore */
+          }
+        }
+        if (cfg.storage?.blockSession) {
+          try {
+            const deny = {
+              getItem() {
+                return null;
+              },
+              setItem() {},
+              removeItem() {},
+              clear() {},
+              key() {
+                return null;
+              },
+              get length() {
+                return 0;
+              },
+            };
+            Object.defineProperty(window, "sessionStorage", { configurable: true, get: () => deny });
+          } catch (e) {
+            /* ignore */
+          }
+        }
+        if (cfg.permissions?.geoBlocked && navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition = function (_s, err) {
+            err && err({ code: 1, message: "Private-C" });
+          };
+          navigator.geolocation.watchPosition = function (_s, err) {
+            err && err({ code: 1, message: "Private-C" });
+            return 0;
+          };
+        }
+        if ((cfg.permissions?.cameraBlocked || cfg.permissions?.micBlocked) && navigator.mediaDevices?.getUserMedia) {
+          const orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+          navigator.mediaDevices.getUserMedia = function (c) {
+            if (cfg.permissions?.cameraBlocked && c && c.video) {
+              return Promise.reject(new DOMException("Private-C blocked", "NotAllowedError"));
+            }
+            if (cfg.permissions?.micBlocked && c && c.audio) {
+              return Promise.reject(new DOMException("Private-C blocked", "NotAllowedError"));
+            }
+            return orig(c);
+          };
+        }
+      },
+      args: [rules],
+    });
+  } catch (e) {
+    console.debug("[Private-C] main-world enforcement skipped", e?.message || e);
+  }
+}
+
+async function handleSpaNavigation(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab?.url || !isPageBadgeEligible(tab.url)) return;
+    const host = new URL(tab.url).hostname.toLowerCase();
+    const state = await getState();
+    if (typeof self.pcApplyDNRForTab === "function") {
+      await self.pcApplyDNRForTab(tabId, host, state);
+    }
+    await postToContentScript(tabId, {
+      type: "PRIVATE_C_PAGE_REVALIDATE",
+      payload: { host, href: tab.url },
+    });
+  } catch (e) {
+    console.debug("[Private-C] SPA nav handling skipped", e?.message || e);
+  }
+}
+
+if (chrome.declarativeNetRequest?.onRuleMatched) {
+  chrome.declarativeNetRequest.onRuleMatched.addListener((info) => {
+    getState()
+      .then((state) => {
+        if (!state.devLogging) return;
+        console.info("[Private-C] DNR matched", info.request?.url, "ruleId", info.rule?.ruleId);
+      })
+      .catch(() => {});
+  });
+}
 
 function truncateUrl(url, max) {
   if (!url || url.length <= max) return url || "";
@@ -157,7 +276,7 @@ function enrichTrackerStorageEntry(base) {
     recommendation:
       action === "allowed (site)"
         ? "This site is set to “Allow all,” so Private-C still records the request for transparency."
-        : "Shown from live browser network activity. Use Block (cookies & trackers) for this site in the toolbar popup to record a stricter preference.",
+        : "Shown from live browser network activity. Use Block all or See options on page from the toolbar popup to tighten this site.",
   };
 }
 
@@ -291,7 +410,9 @@ chrome.webRequest.onCompleted.addListener(
           } catch {
             return;
           }
-          const allowAll = !!state.allowAllTrackingByHost?.[pageHost];
+          const siteRule = state.sitePrivacyRules?.[pageHost];
+          const allowAll =
+            !!state.allowAllTrackingByHost?.[pageHost] || siteRule?.mode === "allow_all";
           queueTrackerNetworkHit({
             pageHost,
             trackerHost: reqHost,
@@ -371,6 +492,28 @@ function normalizeState(raw) {
   s.blockedSitesByHost = { ...(raw.blockedSitesByHost || {}) };
   s.allowAllTrackingByHost = { ...DEFAULT_STATE.allowAllTrackingByHost, ...(raw.allowAllTrackingByHost || {}) };
   s.firstVisitDecided = { ...DEFAULT_STATE.firstVisitDecided, ...(raw.firstVisitDecided || {}) };
+  s.sitePrivacyRules = { ...DEFAULT_STATE.sitePrivacyRules, ...(raw.sitePrivacyRules || {}) };
+  if (typeof raw.devLogging === "boolean") {
+    s.devLogging = raw.devLogging;
+  }
+  s.serverApiBase =
+    typeof raw.serverApiBase === "string" ? raw.serverApiBase.trim() : DEFAULT_STATE.serverApiBase;
+  s.authToken = typeof raw.authToken === "string" ? raw.authToken : DEFAULT_STATE.authToken;
+  s.safeBrowsingApiKey =
+    typeof raw.safeBrowsingApiKey === "string" ? raw.safeBrowsingApiKey : DEFAULT_STATE.safeBrowsingApiKey;
+  s.phishtankApiKey =
+    typeof raw.phishtankApiKey === "string" ? raw.phishtankApiKey : DEFAULT_STATE.phishtankApiKey;
+  s.urlhausAuthKey =
+    typeof raw.urlhausAuthKey === "string" ? raw.urlhausAuthKey : DEFAULT_STATE.urlhausAuthKey;
+  s.threatIntelUrlhausEnabled =
+    typeof raw.threatIntelUrlhausEnabled === "boolean"
+      ? raw.threatIntelUrlhausEnabled
+      : DEFAULT_STATE.threatIntelUrlhausEnabled;
+  const ttl = Number(raw.threatIntelCacheTtlMs);
+  s.threatIntelCacheTtlMs =
+    Number.isFinite(ttl) && ttl >= 60_000 && ttl <= 86400000
+      ? ttl
+      : DEFAULT_STATE.threatIntelCacheTtlMs;
 
   if (raw.isLoggedIn && raw.auth === undefined) {
     s.auth = {
@@ -383,8 +526,11 @@ function normalizeState(raw) {
   return s;
 }
 
-function getApiBase() {
-  return DEFAULT_API_BASE;
+async function resolveApiBase(cachedState) {
+  const s = cachedState || (await getState());
+  const custom =
+    typeof s.serverApiBase === "string" ? s.serverApiBase.trim().replace(/\/+$/, "") : "";
+  return custom || DEFAULT_API_BASE;
 }
 
 async function getOrCreateClientId() {
@@ -404,7 +550,7 @@ function scheduleServerSync() {
     try {
       const state = await getState();
       const clientId = await getOrCreateClientId();
-      const base = getApiBase();
+      const base = await resolveApiBase(state);
       await fetch(`${base}/api/state`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -481,6 +627,14 @@ function maybeSpeakThreat(state, line) {
 }
 
 chrome.runtime.onInstalled.addListener(async (details) => {
+  if (typeof self.pcLoadDynamicTrackerRules === "function") {
+    await self.pcLoadDynamicTrackerRules();
+  }
+  try {
+    chrome.alarms.create("pc-easyprivacy-refresh", { periodInMinutes: 10080 });
+  } catch {
+    /* ignore */
+  }
   if (details.reason === "install") {
     await setState(normalizeState(null));
     chrome.tabs.create({
@@ -489,11 +643,39 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   }
 });
 
-chrome.runtime.onStartup.addListener(() => {
+chrome.runtime.onStartup.addListener(async () => {
+  if (typeof self.pcLoadDynamicTrackerRules === "function") {
+    await self.pcLoadDynamicTrackerRules();
+  }
   scheduleServerSync();
 });
 
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "pc-easyprivacy-refresh" && typeof self.pcRefreshTrackerListFromEasyPrivacy === "function") {
+    self.pcRefreshTrackerListFromEasyPrivacy().catch((e) =>
+      console.warn("Private-C EasyPrivacy refresh", e?.message || e)
+    );
+  }
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "PRIVATE_C_SPA_NAV") {
+    const tabId = sender.tab?.id;
+    if (tabId != null && tabId >= 0) {
+      const prev = spaNavDebounce.get(tabId);
+      if (prev) clearTimeout(prev);
+      spaNavDebounce.set(
+        tabId,
+        setTimeout(() => {
+          spaNavDebounce.delete(tabId);
+          handleSpaNavigation(tabId).catch(() => {});
+        }, 320)
+      );
+    }
+    sendResponse({ ok: true });
+    return false;
+  }
+
   if (message?.type === "PRIVATE_C_SITE_SCAN_RESULT") {
     const tabId = sender.tab?.id;
     const payload = message.payload;
@@ -511,20 +693,71 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "PRIVATE_C_GET_POPUP_CONTEXT") {
     (async () => {
       try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         const state = await getState();
-        if (!tab?.id || !tab.url) {
-          sendResponse({ ok: true, tab: null, scan: null, sitePrefs: null, state });
-          return;
+        const logData = await chrome.storage.local.get([TRACKER_LOG_KEY]);
+        const rawLog = Array.isArray(logData[TRACKER_LOG_KEY]) ? logData[TRACKER_LOG_KEY] : [];
+        const fullLog = rawLog.filter((e) => e && typeof e === "object");
+
+        const dayStart = new Date();
+        dayStart.setHours(0, 0, 0, 0);
+        const t0 = dayStart.getTime();
+        let logRowsToday = 0;
+        let requestsToday = 0;
+        for (let i = 0; i < fullLog.length; i++) {
+          const e = fullLog[i];
+          const ts = new Date(e.timestamp || 0).getTime();
+          if (!Number.isFinite(ts) || ts < t0) continue;
+          logRowsToday += 1;
+          requestsToday += Math.max(1, Number(e.hit_count) || 1);
         }
+
+        const blockedHostsCount = Object.entries(state.blockedSitesByHost || {}).filter(([, v]) => v).length;
+
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         let host = "";
         let eligible = false;
-        try {
-          const u = new URL(tab.url);
-          host = u.hostname.toLowerCase();
-          eligible = isPageBadgeEligible(tab.url);
-        } catch {
-          /* ignore */
+        if (tab?.url) {
+          try {
+            const u = new URL(tab.url);
+            host = u.hostname.toLowerCase();
+            eligible = isPageBadgeEligible(tab.url);
+          } catch {
+            /* ignore */
+          }
+        }
+
+        let tabRealtimeContacts = 0;
+        if (host) {
+          for (const v of pendingTrackerHits.values()) {
+            if (v.source_site === host) tabRealtimeContacts += Math.max(1, Number(v.hit_count) || 1);
+          }
+          for (let i = 0; i < fullLog.length; i++) {
+            const e = fullLog[i];
+            if (typeof e.source_site !== "string" || e.source_site !== host) continue;
+            const ts = new Date(e.timestamp || 0).getTime();
+            if (!Number.isFinite(ts) || ts < t0) continue;
+            tabRealtimeContacts += Math.max(1, Number(e.hit_count) || 1);
+          }
+        }
+
+        const livePopupStats = {
+          tabRealtimeContacts,
+          logRowsToday,
+          requestsToday,
+          blockedHostsCount,
+          trackerHostsInLog: fullLog.length,
+        };
+
+        if (!tab?.id || !tab.url) {
+          sendResponse({
+            ok: true,
+            tab: null,
+            scan: null,
+            sitePrefs: null,
+            state,
+            livePopupStats,
+          });
+          return;
         }
         let scan = null;
         try {
@@ -533,14 +766,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         } catch {
           /* ignore */
         }
-        let trackersForTab = [];
-        try {
-          const logData = await chrome.storage.local.get(TRACKER_LOG_KEY);
-          const fullLog = Array.isArray(logData[TRACKER_LOG_KEY]) ? logData[TRACKER_LOG_KEY] : [];
-          trackersForTab = host ? fullLog.filter((e) => e.source_site === host).slice(0, 20) : [];
-        } catch {
-          /* ignore */
-        }
+        const trackersForTab = host
+          ? fullLog.filter((e) => typeof e.source_site === "string" && e.source_site === host).slice(0, 20)
+          : [];
+
+        const siteRule = host ? state.sitePrivacyRules?.[host] : null;
+        let rulesSummary = "Not set yet";
+        if (siteRule?.mode === "allow_all") rulesSummary = "Allow all";
+        else if (siteRule?.mode === "block_all") rulesSummary = "Block all";
+        else if (siteRule && siteRule.mode === "custom") rulesSummary = "Custom (see options on page)";
+        else if (siteRule && Object.keys(siteRule).length > 0) rulesSummary = "Saved rules";
+
         sendResponse({
           ok: true,
           tab: { id: tab.id, url: tab.url, host, eligible },
@@ -551,9 +787,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               ? {
                   allowAll: !!state.allowAllTrackingByHost?.[host],
                   decided: !!state.firstVisitDecided?.[host],
+                  rulesSummary,
                 }
               : null,
           state,
+          livePopupStats,
         });
       } catch (e) {
         sendResponse({ ok: false, error: String(e) });
@@ -575,6 +813,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true, state: next });
       })
       .catch((error) => sendResponse({ ok: false, error: String(error) }));
+    return true;
+  }
+
+  if (message?.type === "PRIVATE_C_LOAD_DUMMY_DATA") {
+    (async () => {
+      try {
+        const base = chrome.runtime.getURL("data/dummy/");
+        const [stRes, logRes] = await Promise.all([
+          fetch(`${base}extension-state.json`),
+          fetch(`${base}tracker-log.json`),
+        ]);
+        if (!stRes.ok || !logRes.ok) {
+          sendResponse({
+            ok: false,
+            error: `Missing dummy fixtures (${stRes.status} / ${logRes.status}). Re-pack the extension.`,
+          });
+          return;
+        }
+        const dummyState = await stRes.json();
+        const dummyLog = await logRes.json();
+        const current = await getState();
+        const next = mergeDeep(current, dummyState);
+        await setState(next);
+        const logArr = Array.isArray(dummyLog) ? dummyLog : [];
+        const hits = logArr.reduce((a, e) => a + Math.max(1, Number(e.hit_count) || 1), 0);
+        await chrome.storage.local.set({
+          privateCTrackerLog: logArr,
+          privateCTrackerHitTotal: hits,
+        });
+        sendResponse({ ok: true, trackers: logArr.length });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e?.message || e) });
+      }
+    })();
     return true;
   }
 
@@ -625,20 +897,70 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (message?.type === "PRIVATE_C_SITE_PRIVACY_RULES") {
+    const host = typeof message.payload?.host === "string" ? message.payload.host.trim().toLowerCase() : "";
+    const rules = message.payload?.rules;
+    const tabId = sender.tab?.id ?? message.payload?.tabId;
+    if (!host || !rules || typeof rules !== "object") {
+      sendResponse({ ok: false, error: "missing host or rules" });
+      return false;
+    }
+    getState()
+      .then(async (state) => {
+        const allowAll = rules.mode === "allow_all";
+        const next = mergeDeep(state, {
+          firstVisitDecided: { ...state.firstVisitDecided, [host]: true },
+          allowAllTrackingByHost: { ...state.allowAllTrackingByHost, [host]: allowAll },
+          sitePrivacyRules: {
+            ...state.sitePrivacyRules,
+            [host]: { ...rules, updatedAt: Date.now() },
+          },
+        });
+        await setState(next);
+        await applyMainWorldEnforcement(tabId, rules);
+        if (typeof self.pcApplyDNRForTab === "function" && tabId != null) {
+          await self.pcApplyDNRForTab(tabId, host, next);
+        }
+        sendResponse({ ok: true });
+      })
+      .catch((e) => sendResponse({ ok: false, error: String(e) }));
+    return true;
+  }
+
   if (message?.type === "PRIVATE_C_SITE_PRIVACY_CHOICE") {
     const host = typeof message.payload?.host === "string" ? message.payload.host.trim().toLowerCase() : "";
     const allowAll = !!message.payload?.allowAll;
+    const tabId = sender.tab?.id ?? message.payload?.tabId;
     if (!host) {
       sendResponse({ ok: false, error: "missing host" });
       return false;
     }
     getState()
       .then(async (state) => {
+        const sitePrivacyRules = { ...state.sitePrivacyRules };
+        if (allowAll) {
+          sitePrivacyRules[host] = { mode: "allow_all", updatedAt: Date.now() };
+        } else {
+          sitePrivacyRules[host] = {
+            mode: "block_all",
+            trackers: { third_party: true, block_ip_endpoints: true },
+            cookies: "block_all",
+            storage: { blockLocal: false, blockSession: false, allowSelectedOnly: true },
+            permissions: { geoBlocked: false, cameraBlocked: false, micBlocked: false, askEveryTime: true },
+            accountProtection: { warnLogin: false, scanPolicyBeforeLogin: false, delaySubmit: false },
+            updatedAt: Date.now(),
+          };
+        }
         const next = mergeDeep(state, {
           firstVisitDecided: { ...state.firstVisitDecided, [host]: true },
           allowAllTrackingByHost: { ...state.allowAllTrackingByHost, [host]: allowAll },
+          sitePrivacyRules,
         });
         await setState(next);
+        await applyMainWorldEnforcement(tabId, sitePrivacyRules[host]);
+        if (typeof self.pcApplyDNRForTab === "function" && tabId != null) {
+          await self.pcApplyDNRForTab(tabId, host, next);
+        }
         sendResponse({ ok: true });
       })
       .catch((e) => sendResponse({ ok: false, error: String(e) }));
@@ -649,6 +971,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     scheduleServerSync();
     sendResponse({ ok: true });
     return false;
+  }
+
+  if (message?.type === "PRIVATE_C_REFRESH_TRACKER_LIST") {
+    (async () => {
+      try {
+        if (typeof self.pcRefreshTrackerListFromEasyPrivacy !== "function") {
+          sendResponse({ ok: false, error: "refresh not available" });
+          return;
+        }
+        const r = await self.pcRefreshTrackerListFromEasyPrivacy();
+        sendResponse({ ok: true, ...r });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e?.message || e) });
+      }
+    })();
+    return true;
   }
 
   return false;
@@ -682,7 +1020,10 @@ chrome.tabs.onUpdated.addListener(async (_tabId, changeInfo, tab) => {
       });
     }
 
-    const threat = THREAT_HOSTS[host];
+    const threat =
+      typeof self.pcLookupThreatIntel === "function"
+        ? await self.pcLookupThreatIntel(tab.url, host, state)
+        : null;
     if (threat && !state.blockedSitesByHost[host] && !allowAll) {
       nextState.stats.blockedSites = state.stats.blockedSites + 1;
       nextState.blockedSitesByHost = {
@@ -693,7 +1034,7 @@ chrome.tabs.onUpdated.addListener(async (_tabId, changeInfo, tab) => {
       let assistantLine = threat.assistantLine || threat.reason;
       const heuristicScore = threat.severity === "high" ? "risky" : "caution";
       try {
-        const base = getApiBase();
+        const base = await resolveApiBase(state);
         const res = await fetch(`${base}/api/site-evaluation`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -726,6 +1067,10 @@ chrome.tabs.onUpdated.addListener(async (_tabId, changeInfo, tab) => {
     }
 
     await setState(nextState);
+    const after = await getState();
+    if (typeof self.pcApplyDNRForTab === "function" && tab.id != null) {
+      await self.pcApplyDNRForTab(tab.id, host, after);
+    }
   } catch (error) {
     console.warn("Private-C URL parsing failed", error);
   }

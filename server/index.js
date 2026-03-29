@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
 import { createRequire } from "node:module";
+import { createAuthRouter } from "./authRoutes.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -12,12 +13,12 @@ try {
   ({ getTrustExplanation, summarizePolicy } = require("../api/gemini.js"));
 } catch (e) {
   console.warn("api/gemini.js load failed:", e.message);
-  getTrustExplanation = async ({ heuristicScore }) => ({
-    explanation: "Trust analysis is unavailable (server module error).",
-  });
-  summarizePolicy = async () => ({
-    summary: "Privacy policy analysis is unavailable.",
-  });
+  getTrustExplanation = async () => {
+    throw new Error("Trust analysis unavailable: Gemini module failed to load.");
+  };
+  summarizePolicy = async () => {
+    throw new Error("Policy summary unavailable: Gemini module failed to load.");
+  };
 }
 
 const PORT = Number(process.env.PORT || 3847);
@@ -34,6 +35,7 @@ const POLICY_MONITOR_HOSTS = String(process.env.POLICY_MONITOR_HOSTS || "")
 const memoryStore = new Map();
 const siteEvalMemory = new Map();
 const policyMemory = new Map();
+const userAuthMemory = new Map();
 
 const extensionStateSchema = new mongoose.Schema(
   {
@@ -72,15 +74,41 @@ const SiteEvaluation =
 const PolicySnapshot =
   mongoose.models.PolicySnapshot || mongoose.model("PolicySnapshot", policySnapshotSchema);
 
+const userSchema = new mongoose.Schema(
+  {
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    passwordHash: { type: String, required: true },
+    onboardingComplete: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+const PrivateCUser =
+  mongoose.models.PrivateCUser || mongoose.model("PrivateCUser", userSchema);
+
 const app = express();
 app.use(
   cors({
     origin: true,
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
+    methods: ["GET", "POST", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 app.use(express.json({ limit: "512kb" }));
+
+const jwtSecret = String(process.env.JWT_SECRET || "").trim();
+if (jwtSecret.length >= 16) {
+  const authRouter = createAuthRouter({
+    User: PrivateCUser,
+    jwtSecret,
+    skipMongo: SKIP_MONGO,
+    userMemory: userAuthMemory,
+  });
+  app.use("/api/auth", authRouter);
+} else {
+  console.warn(
+    "Auth: JWT_SECRET missing or shorter than 16 chars — /api/auth/* disabled. Set JWT_SECRET in server/.env"
+  );
+}
 
 async function getSiteEvaluation(host) {
   if (SKIP_MONGO) {
@@ -271,7 +299,19 @@ async function main() {
   scheduleWeeklyPolicyJob();
 
   app.listen(PORT, "127.0.0.1", () => {
+    const geminiReady = Boolean(String(process.env.GEMINI_API_KEY || "").trim());
+    const authReady = jwtSecret.length >= 16;
     console.log(`Private-C API listening on http://127.0.0.1:${PORT}`);
+    console.log(
+      geminiReady
+        ? "Gemini: GEMINI_API_KEY is set (site evaluations will use the API when uncached)."
+        : "Gemini: GEMINI_API_KEY not set — POST /api/site-evaluation will error until you add a key (no synthetic explanations)."
+    );
+    console.log(
+      authReady
+        ? "Auth: POST /api/auth/register, /api/auth/login, GET /api/auth/me enabled."
+        : "Auth: disabled until JWT_SECRET is set (16+ characters)."
+    );
     console.log("Site evaluations: POST /api/site-evaluation (DB first, then Gemini → save).");
     if (POLICY_MONITOR_HOSTS.length) {
       console.log("Weekly policy refresh hosts:", POLICY_MONITOR_HOSTS.join(", "));

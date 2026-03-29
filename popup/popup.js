@@ -1,8 +1,18 @@
+/**
+ * This file is the extension *toolbar menu* (click the icon). It is NOT the on-page bottom banner
+ * that appears on websites and auto-dismisses — that UI lives in content/threat-warning.js.
+ */
+
 if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
   const logo = document.getElementById("popupLogo");
   if (logo) {
-    logo.src = chrome.runtime.getURL("assets/logo.png");
+    const url = chrome.runtime.getURL("assets/Logo.png");
+    logo.src = `${url}?v=2`;
     logo.alt = "Private-C";
+  }
+  const openSetupLink = document.getElementById("openSetupLink");
+  if (openSetupLink) {
+    openSetupLink.href = chrome.runtime.getURL("dashboard/dist/index.html#/auth/login");
   }
 }
 
@@ -16,19 +26,34 @@ const ui = {
   preferencesSummary: document.getElementById("preferencesSummary"),
   preferenceList: document.getElementById("preferenceList"),
   thisPageSection: document.getElementById("thisPageSection"),
-  pageHost: document.getElementById("pageHost"),
+  popupSiteHostname: document.getElementById("popupSiteHostname"),
+  popupPageUrlFull: document.getElementById("popupPageUrlFull"),
+  popupSiteMeta: document.getElementById("popupSiteMeta"),
+  popupSessionTrackers: document.getElementById("popupSessionTrackers"),
   pageScanAgent: document.getElementById("pageScanAgent"),
   focusThisTab: document.getElementById("focusThisTab"),
   openPageNewTab: document.getElementById("openPageNewTab"),
   sitePrefsInline: document.getElementById("sitePrefsInline"),
+  siteRulesSummary: document.getElementById("siteRulesSummary"),
   prefBlock: document.getElementById("prefBlock"),
   prefAllow: document.getElementById("prefAllow"),
+  openGranularChoices: document.getElementById("openGranularChoices"),
   saveSitePrefs: document.getElementById("saveSitePrefs"),
   sitePrefsStatus: document.getElementById("sitePrefsStatus"),
   tabTrackersWrap: document.getElementById("tabTrackersWrap"),
   tabTrackersList: document.getElementById("tabTrackersList"),
   tabTrackersEmpty: document.getElementById("tabTrackersEmpty"),
+  onPageBannerHint: document.getElementById("onPageBannerHint"),
+  showToolbarSitePrefs: document.getElementById("showToolbarSitePrefs"),
 };
+
+/** When user chooses “set here instead” before completing the on-page banner flow */
+let preferToolbarSitePrefsForHost = "";
+
+/** Must match background/background.js */
+const PC_STORAGE_LOG_KEY = "privateCTrackerLog";
+const PC_STORAGE_STATE_KEY = "privateCState";
+const PC_TAB_SCAN_PREFIX = "tabScan_";
 
 const CATEGORY_LABELS = {
   cookies: "Cookie tracking",
@@ -44,8 +69,8 @@ let popupHost = "";
 let allowAllChoice = false;
 
 function syncPrefToggles() {
-  ui.prefBlock.classList.toggle("toggle-active", !allowAllChoice);
-  ui.prefAllow.classList.toggle("toggle-active", allowAllChoice);
+  ui.prefBlock?.classList.toggle("toggle-active", !allowAllChoice);
+  ui.prefAllow?.classList.toggle("toggle-active", allowAllChoice);
 }
 
 function formatScanSummary(scan) {
@@ -78,7 +103,20 @@ function formatScanSummary(scan) {
   return text;
 }
 
+function formatSessionTrackersLine(list) {
+  const rows = Array.isArray(list) ? list : [];
+  if (rows.length === 0) {
+    return "Live network: no catalog-matched third-party tracker hosts for this tab yet.";
+  }
+  let hits = 0;
+  rows.forEach((t) => {
+    hits += Math.max(1, Number(t.hit_count) || 1);
+  });
+  return `Live network: ${rows.length} tracker host${rows.length === 1 ? "" : "s"} · ${hits} contact${hits === 1 ? "" : "s"} logged for this tab.`;
+}
+
 function renderTabTrackers(list, eligible) {
+  if (!ui.tabTrackersList || !ui.tabTrackersWrap || !ui.tabTrackersEmpty) return;
   ui.tabTrackersList.innerHTML = "";
   if (!eligible) {
     ui.tabTrackersWrap.classList.add("hidden");
@@ -92,39 +130,89 @@ function renderTabTrackers(list, eligible) {
     return;
   }
   ui.tabTrackersEmpty.classList.add("hidden");
-  rows.slice(0, 14).forEach((t) => {
+  rows.slice(0, 20).forEach((t) => {
     const li = document.createElement("li");
     const hits = t.hit_count > 1 ? ` · ${t.hit_count}×` : "";
-    li.textContent = `${t.tracker_domain} (${t.category || "tracker"})${hits}`;
+    const label = t.label || t.tracker_domain;
+    li.textContent = `${label} (${t.category || "tracker"})${hits}`;
+    if (t.last_sample_url) {
+      li.title = t.last_sample_url;
+    }
     ui.tabTrackersList.appendChild(li);
   });
+}
+
+function setSiteHero(tab) {
+  if (!ui.popupSiteHostname) return;
+
+  if (!tab || !tab.url) {
+    ui.popupSiteHostname.textContent = "—";
+    if (ui.popupPageUrlFull) {
+      ui.popupPageUrlFull.textContent = "";
+      ui.popupPageUrlFull.removeAttribute("title");
+    }
+    if (ui.popupSiteMeta) ui.popupSiteMeta.textContent = "No active browser tab.";
+    if (ui.popupSessionTrackers) ui.popupSessionTrackers.textContent = "";
+    return;
+  }
+
+  let displayHost = tab.host || "";
+  if (!displayHost) {
+    try {
+      displayHost = new URL(tab.url).hostname;
+    } catch {
+      displayHost = "Page";
+    }
+  }
+  ui.popupSiteHostname.textContent = displayHost || "Page";
+
+  if (ui.popupPageUrlFull) {
+    ui.popupPageUrlFull.textContent = tab.url;
+    ui.popupPageUrlFull.title = tab.url;
+  }
+
+  if (ui.popupSiteMeta) {
+    if (tab.eligible && tab.host) {
+      ui.popupSiteMeta.textContent =
+        "HTTPS site — per-site controls and live tracker list apply.";
+    } else {
+      ui.popupSiteMeta.textContent =
+        "Built-in or restricted page — open a normal https website for full site tools and live tracker logging.";
+    }
+  }
 }
 
 function renderThisPage(ctx) {
   popupTabId = null;
   popupHost = "";
 
+  if (!ui.thisPageSection || !ui.pageScanAgent) return;
   ui.thisPageSection.classList.remove("hidden");
-  ui.sitePrefsStatus.textContent = "";
+  ui.onPageBannerHint?.classList.add("hidden");
+  if (ui.sitePrefsStatus) ui.sitePrefsStatus.textContent = "";
+  if (ui.siteRulesSummary) ui.siteRulesSummary.textContent = "";
   ui.focusThisTab.hidden = true;
   ui.openPageNewTab.hidden = true;
-  ui.sitePrefsInline.classList.add("hidden");
-  ui.tabTrackersWrap.classList.add("hidden");
-  ui.tabTrackersEmpty.classList.add("hidden");
+  ui.sitePrefsInline?.classList.add("hidden");
+  ui.tabTrackersWrap?.classList.add("hidden");
+  ui.tabTrackersEmpty?.classList.add("hidden");
 
   const tab = ctx.tab;
+  setSiteHero(tab);
+
   if (!tab || !tab.url) {
-    ui.pageHost.textContent = "";
     ui.pageScanAgent.textContent = "No active tab.";
     renderTabTrackers([], false);
     return;
   }
 
-  ui.pageHost.textContent = tab.host || tab.url;
-
   if (!tab.eligible || !tab.host) {
     ui.pageScanAgent.textContent =
-      "Open a normal website (https) in this tab to run the on-page cookie and tracker check and set site preferences here.";
+      "Page snapshot runs on standard https sites. This URL does not get the on-page scanner or per-site blocking UI.";
+    if (ui.popupSessionTrackers) {
+      ui.popupSessionTrackers.textContent =
+        "Live tracker list: switch to an https tab (not chrome://, localhost, or file).";
+    }
     renderTabTrackers([], false);
     return;
   }
@@ -137,32 +225,52 @@ function renderThisPage(ctx) {
 
   ui.pageScanAgent.textContent = ctx.scan ? formatScanSummary(ctx.scan) : formatScanSummary(null);
 
+  if (ui.popupSessionTrackers) {
+    ui.popupSessionTrackers.textContent = formatSessionTrackersLine(ctx.trackersForTab);
+  }
+
   renderTabTrackers(ctx.trackersForTab, true);
 
   if (ctx.sitePrefs) {
-    ui.sitePrefsInline.classList.remove("hidden");
-    allowAllChoice = !!ctx.sitePrefs.allowAll;
-    syncPrefToggles();
+    const decided = !!ctx.sitePrefs.decided;
+    const useToolbarFallback = preferToolbarSitePrefsForHost === tab.host;
+    if (!decided && !useToolbarFallback) {
+      ui.onPageBannerHint?.classList.remove("hidden");
+      ui.sitePrefsInline?.classList.add("hidden");
+    } else {
+      ui.onPageBannerHint?.classList.add("hidden");
+      ui.sitePrefsInline?.classList.remove("hidden");
+      allowAllChoice = !!ctx.sitePrefs.allowAll;
+      syncPrefToggles();
+      if (ui.siteRulesSummary && ctx.sitePrefs.rulesSummary) {
+        ui.siteRulesSummary.textContent = `Saved rule: ${ctx.sitePrefs.rulesSummary}`;
+      }
+    }
+    if (decided && preferToolbarSitePrefsForHost === tab.host) {
+      preferToolbarSitePrefsForHost = "";
+    }
   }
 }
 
-function renderLoggedOut() {
-  ui.accountBadge.textContent = "Guest";
-  ui.loginPrompt.classList.remove("hidden");
-  ui.statsBar.classList.add("hidden");
-  ui.preferencesSummary.classList.add("hidden");
+function applyStats(state, live) {
+  if (!ui.cookiesStopped || !ui.privacyConcerns || !ui.blockedSites) return;
+  ui.cookiesStopped.textContent = String(live?.tabRealtimeContacts ?? 0);
+  ui.privacyConcerns.textContent = String(live?.requestsToday ?? 0);
+  ui.blockedSites.textContent = String(live?.blockedHostsCount ?? state?.stats?.blockedSites ?? 0);
 }
 
-function renderLoggedIn(state) {
-  ui.accountBadge.textContent = state.account?.email || "Signed in";
-  ui.loginPrompt.classList.add("hidden");
-  ui.statsBar.classList.remove("hidden");
-  ui.preferencesSummary.classList.remove("hidden");
+function renderGuestChrome() {
+  if (ui.accountBadge) ui.accountBadge.textContent = "Guest";
+  ui.loginPrompt?.classList.remove("hidden");
+  ui.preferencesSummary?.classList.add("hidden");
+}
 
-  ui.cookiesStopped.textContent = String(state.stats?.cookiesStopped || 0);
-  ui.privacyConcerns.textContent = String(state.stats?.privacyConcerns || 0);
-  ui.blockedSites.textContent = String(state.stats?.blockedSites || 0);
+function renderSignedInChrome(state) {
+  if (ui.accountBadge) ui.accountBadge.textContent = state.account?.email || "Signed in";
+  ui.loginPrompt?.classList.add("hidden");
+  ui.preferencesSummary?.classList.remove("hidden");
 
+  if (!ui.preferenceList) return;
   ui.preferenceList.innerHTML = "";
   const active = Object.entries(state.preferences || {}).filter(([, enabled]) => enabled);
 
@@ -180,57 +288,150 @@ function renderLoggedIn(state) {
   });
 }
 
+let popupDebounceTimer = null;
+let lastScanPingTabId = null;
+
+function pingActiveTabForScan(tabId, eligible) {
+  if (tabId == null || !eligible) return;
+  chrome.tabs.sendMessage(tabId, { type: "PRIVATE_C_REFRESH_PAGE_SCAN_FROM_POPUP" }, () => {
+    void chrome.runtime?.lastError;
+  });
+}
+
 function loadPopup() {
+  if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) {
+    if (ui.pageScanAgent) {
+      ui.pageScanAgent.textContent = "Open this panel from the Private-C extension toolbar.";
+    }
+    return;
+  }
+
   chrome.runtime.sendMessage({ type: "PRIVATE_C_GET_POPUP_CONTEXT" }, (response) => {
-    if (chrome.runtime.lastError || !response?.ok) {
+    const lastErr = chrome.runtime.lastError;
+    if (lastErr || !response?.ok) {
+      setSiteHero(null);
       renderThisPage({ tab: null, scan: null, sitePrefs: null });
-      renderLoggedOut();
+      if (ui.pageScanAgent) {
+        ui.pageScanAgent.textContent = lastErr
+          ? `Can't reach the extension background (${lastErr.message}). Reload Private-C on chrome://extensions.`
+          : `Extension error: ${response?.error || "unknown"}. Try reloading Private-C.`;
+      }
+      applyStats({}, null);
+      renderGuestChrome();
       return;
     }
 
     renderThisPage(response);
+    applyStats(response.state, response.livePopupStats);
+    ui.statsBar?.classList.remove("hidden");
 
     if (response.state?.isLoggedIn) {
-      renderLoggedIn(response.state);
+      renderSignedInChrome(response.state);
     } else {
-      renderLoggedOut();
+      renderGuestChrome();
+    }
+
+    const tid = response.tab?.id;
+    if (tid != null && response.tab?.eligible && lastScanPingTabId !== tid) {
+      lastScanPingTabId = tid;
+      pingActiveTabForScan(tid, true);
+      setTimeout(() => loadPopup(), 450);
     }
   });
 }
 
-ui.prefBlock.addEventListener("click", () => {
+function schedulePopupReload() {
+  if (popupDebounceTimer != null) {
+    clearTimeout(popupDebounceTimer);
+  }
+  popupDebounceTimer = setTimeout(() => {
+    popupDebounceTimer = null;
+    loadPopup();
+  }, 100);
+}
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local") {
+    if (changes[PC_STORAGE_LOG_KEY] || changes[PC_STORAGE_STATE_KEY]) {
+      schedulePopupReload();
+    }
+    return;
+  }
+  if (areaName === "session") {
+    const keys = Object.keys(changes);
+    if (keys.some((k) => k.startsWith(PC_TAB_SCAN_PREFIX) || k.startsWith("pc_dnr_"))) {
+      schedulePopupReload();
+    }
+  }
+});
+
+const POPUP_POLL_MS = 1100;
+setInterval(() => loadPopup(), POPUP_POLL_MS);
+
+ui.prefBlock?.addEventListener("click", () => {
   allowAllChoice = false;
   syncPrefToggles();
 });
 
-ui.prefAllow.addEventListener("click", () => {
+ui.prefAllow?.addEventListener("click", () => {
   allowAllChoice = true;
   syncPrefToggles();
 });
 
-ui.saveSitePrefs.addEventListener("click", () => {
+ui.showToolbarSitePrefs?.addEventListener("click", () => {
   if (!popupHost) return;
-  ui.sitePrefsStatus.textContent = "";
+  preferToolbarSitePrefsForHost = popupHost;
+  ui.onPageBannerHint?.classList.add("hidden");
+  ui.sitePrefsInline?.classList.remove("hidden");
+  chrome.runtime.sendMessage({ type: "PRIVATE_C_GET_POPUP_CONTEXT" }, (response) => {
+    if (chrome.runtime.lastError || !response?.ok || !response.sitePrefs) return;
+    allowAllChoice = !!response.sitePrefs.allowAll;
+    syncPrefToggles();
+    if (ui.siteRulesSummary && response.sitePrefs.rulesSummary) {
+      ui.siteRulesSummary.textContent = `Saved rule: ${response.sitePrefs.rulesSummary}`;
+    }
+  });
+});
+
+ui.openGranularChoices?.addEventListener("click", () => {
+  if (popupTabId == null) return;
+  if (ui.sitePrefsStatus) ui.sitePrefsStatus.textContent = "";
+  chrome.tabs.sendMessage(popupTabId, { type: "PRIVATE_C_OPEN_SITE_OPTIONS" }, (r) => {
+    if (chrome.runtime.lastError || r?.ok === false) {
+      if (ui.sitePrefsStatus) {
+        ui.sitePrefsStatus.textContent = "Focus the page tab and refresh, then try again.";
+      }
+      return;
+    }
+    if (ui.sitePrefsStatus) ui.sitePrefsStatus.textContent = "Choices opened on the page.";
+    window.close();
+  });
+});
+
+ui.saveSitePrefs?.addEventListener("click", () => {
+  if (!popupHost) return;
+  if (ui.sitePrefsStatus) ui.sitePrefsStatus.textContent = "";
   chrome.runtime.sendMessage(
     {
       type: "PRIVATE_C_SITE_PRIVACY_CHOICE",
-      payload: { host: popupHost, allowAll: allowAllChoice },
+      payload: { host: popupHost, allowAll: allowAllChoice, tabId: popupTabId },
     },
     (r) => {
       if (chrome.runtime.lastError) {
-        ui.sitePrefsStatus.textContent = "Could not save. Try again.";
+        if (ui.sitePrefsStatus) ui.sitePrefsStatus.textContent = "Could not save. Try again.";
         return;
       }
       if (r?.ok) {
-        ui.sitePrefsStatus.textContent = "Saved for this site.";
-      } else {
+        if (ui.sitePrefsStatus) ui.sitePrefsStatus.textContent = "Saved for this site.";
+        loadPopup();
+      } else if (ui.sitePrefsStatus) {
         ui.sitePrefsStatus.textContent = "Save failed.";
       }
     }
   );
 });
 
-ui.focusThisTab.addEventListener("click", () => {
+ui.focusThisTab?.addEventListener("click", () => {
   if (popupTabId == null) return;
   chrome.tabs.update(popupTabId, { active: true }, () => {
     void chrome.runtime?.lastError;
@@ -238,7 +439,7 @@ ui.focusThisTab.addEventListener("click", () => {
   });
 });
 
-ui.openPageNewTab.addEventListener("click", (e) => {
+ui.openPageNewTab?.addEventListener("click", (e) => {
   const url = ui.openPageNewTab.getAttribute("href");
   if (!url || url === "#") {
     e.preventDefault();

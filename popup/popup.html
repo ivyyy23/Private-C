@@ -3,82 +3,100 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Private-C Dashboard</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
+    <meta name="color-scheme" content="dark" />
+    <title>Private-C</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <main class="shell">
       <header class="topbar">
         <div class="topbar-brand">
-          <img id="popupLogo" class="popup-logo" width="44" height="44" alt="" />
+          <img id="popupLogo" class="popup-logo" width="40" height="40" alt="" />
           <div class="topbar-titles">
             <p class="mini">PRIVATE-C</p>
-            <h1>Privacy Stats</h1>
+            <p class="topbar-sub">Extension menu</p>
           </div>
         </div>
         <span id="accountBadge" class="account-badge">Guest</span>
       </header>
 
-      <section id="thisPageSection" class="this-page hidden">
-        <h2 class="section-title">This tab</h2>
-        <p id="pageHost" class="page-host"></p>
-        <p id="pageScanAgent" class="scan-agent" aria-live="polite"></p>
-        <div class="visit-row">
-          <button type="button" id="focusThisTab" class="linkish" hidden>Return to this page</button>
-          <a id="openPageNewTab" class="linkish" href="#" hidden>Open page in new tab</a>
-        </div>
-        <div id="sitePrefsInline" class="site-prefs-inline hidden">
-          <p class="mini-label">Cookies &amp; trackers (this site)</p>
-          <div class="toggle-row" role="group" aria-label="Cookies and trackers">
-            <button type="button" id="prefBlock" class="toggle-btn toggle-active">Block</button>
-            <button type="button" id="prefAllow" class="toggle-btn">Allow all</button>
+      <div class="popup-body-scroll">
+        <section class="site-hero" aria-labelledby="popupSiteHostname">
+          <p class="site-hero-label">Current tab</p>
+          <h2 id="popupSiteHostname" class="site-hero-host">—</h2>
+          <p id="popupPageUrlFull" class="site-hero-url" title=""></p>
+          <p id="popupSiteMeta" class="site-hero-meta" aria-live="polite"></p>
+          <p id="popupSessionTrackers" class="site-hero-session" aria-live="polite"></p>
+        </section>
+
+        <section id="onPageBannerHint" class="on-page-hint hidden" aria-live="polite">
+          <p class="on-page-hint-title">Main control is on the webpage</p>
+          <p class="on-page-hint-body">
+            On this tab, Private-C shows the same site controls <strong>on the page</strong>: first visit uses a bar along the bottom;
+            after that, a <strong>bottom-right panel</strong> with Block all, Allow all, and Select choices.
+            It <strong>auto-hides</strong> when you move away — hover inside to pause the timer.
+            The toolbar menu you opened here is only the <strong>extension menu</strong> and stays open until you close it.
+          </p>
+          <button type="button" id="showToolbarSitePrefs" class="hint-fallback-btn">
+            Set site choices here instead
+          </button>
+        </section>
+
+        <section id="thisPageSection" class="this-page">
+          <h2 class="section-title">Page check (DOM)</h2>
+          <p id="pageScanAgent" class="scan-agent" aria-live="polite">Loading…</p>
+          <div class="visit-row">
+            <button type="button" id="focusThisTab" class="linkish" hidden>Focus this tab</button>
+            <a id="openPageNewTab" class="linkish" href="#" hidden>Open URL in new tab</a>
           </div>
-          <button type="button" id="saveSitePrefs" class="save-prefs-btn">Save for this site</button>
-          <p id="sitePrefsStatus" class="prefs-status" role="status"></p>
-        </div>
-        <div id="tabTrackersWrap" class="tab-trackers hidden">
-          <p class="mini-label">Trackers on this site (live network)</p>
-          <ul id="tabTrackersList" class="tab-trackers-list"></ul>
-          <p id="tabTrackersEmpty" class="tab-trackers-empty hidden">No catalog-matched tracker requests yet for this tab.</p>
-        </div>
-      </section>
 
-      <section id="loginPrompt" class="login-prompt hidden">
-        <p>Finish setup to unlock live monitoring and custom preferences.</p>
-        <a href="../dashboard/dist/index.html#/auth/login" target="_blank" rel="noreferrer">Open Setup</a>
-      </section>
+          <div id="sitePrefsInline" class="site-prefs-inline hidden">
+            <p class="mini-label">Cookies &amp; trackers · this site</p>
+            <p id="siteRulesSummary" class="rules-summary" aria-live="polite"></p>
+            <div class="pref-choice-row" role="group" aria-label="Cookies and trackers for this site">
+              <button type="button" id="prefBlock" class="toggle-btn toggle-active">Block all</button>
+              <button type="button" id="prefAllow" class="toggle-btn">Allow all</button>
+              <button type="button" id="openGranularChoices" class="toggle-btn">Select choices</button>
+            </div>
+            <button type="button" id="saveSitePrefs" class="save-prefs-btn">Save for this site</button>
+            <p id="sitePrefsStatus" class="prefs-status" role="status"></p>
+          </div>
 
-      <section id="statsBar" class="stats-grid hidden" aria-live="polite">
-        <article class="stat-card">
-          <p class="label">Cookies Stopped</p>
-          <p id="cookiesStopped" class="value">0</p>
-        </article>
+          <div id="tabTrackersWrap" class="tab-trackers hidden">
+            <p class="mini-label">Trackers contacted (this site, live)</p>
+            <ul id="tabTrackersList" class="tab-trackers-list"></ul>
+            <p id="tabTrackersEmpty" class="tab-trackers-empty hidden">No catalog-matched third-party requests logged for this tab yet.</p>
+          </div>
+        </section>
 
-        <article class="stat-card">
-          <p class="label">Privacy Concerns</p>
-          <p id="privacyConcerns" class="value">0</p>
-        </article>
+        <section id="statsBar" class="stats-grid" aria-live="polite">
+          <article class="stat-card">
+            <p class="label">This site · contacts (today + live buffer)</p>
+            <p id="cookiesStopped" class="value">0</p>
+          </article>
+          <article class="stat-card">
+            <p class="label">Today · all sites (logged)</p>
+            <p id="privacyConcerns" class="value">0</p>
+          </article>
+          <article class="stat-card">
+            <p class="label">Blocked sites (hosts)</p>
+            <p id="blockedSites" class="value">0</p>
+          </article>
+        </section>
 
-        <article class="stat-card">
-          <p class="label">Blocked Sites</p>
-          <p id="blockedSites" class="value">0</p>
-        </article>
-      </section>
+        <section id="loginPrompt" class="login-prompt hidden">
+          <p>Sign in from the dashboard to sync the data watchlist across sessions.</p>
+          <a id="openSetupLink" href="#" target="_blank" rel="noreferrer">Open dashboard</a>
+        </section>
 
-      <section id="preferencesSummary" class="pref-summary hidden">
-        <h2>Active Data Watchlist</h2>
-        <ul id="preferenceList"></ul>
-      </section>
+        <section id="preferencesSummary" class="pref-summary hidden">
+          <h2>Active data watchlist</h2>
+          <ul id="preferenceList"></ul>
+        </section>
+      </div>
 
       <section class="dash-actions">
         <button type="button" id="openDashboard" class="dash-btn ghost-dash">Open full dashboard</button>
-        <p class="dash-hint">Optional — site check and preferences work here without the dashboard.</p>
       </section>
     </main>
 

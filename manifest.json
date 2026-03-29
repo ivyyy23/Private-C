@@ -7,17 +7,17 @@
     "default_title": "Private-C",
     "default_popup": "popup/popup.html",
     "default_icon": {
-      "16": "assets/logo.png",
-      "32": "assets/logo.png",
-      "48": "assets/logo.png",
-      "128": "assets/logo.png"
+      "16": "assets/Logo.png",
+      "32": "assets/Logo.png",
+      "48": "assets/Logo.png",
+      "128": "assets/Logo.png"
     }
   },
   "icons": {
-    "16": "assets/logo.png",
-    "32": "assets/logo.png",
-    "48": "assets/logo.png",
-    "128": "assets/logo.png"
+    "16": "assets/Logo.png",
+    "32": "assets/Logo.png",
+    "48": "assets/Logo.png",
+    "128": "assets/Logo.png"
   },
   "options_ui": {
     "page": "dashboard/dist/index.html",
@@ -31,23 +31,33 @@
     "tabs",
     "tts",
     "scripting",
-    "webRequest"
+    "webRequest",
+    "declarativeNetRequest",
+    "declarativeNetRequestFeedback"
   ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "private_c_static",
+        "enabled": true,
+        "path": "rules/dnr_static.json"
+      }
+    ]
+  },
   "host_permissions": [
     "<all_urls>",
     "https://api.elevenlabs.io/*"
   ],
   "content_scripts": [
     {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "content/threat-warning.js"
-      ],
-      "css": [
-        "content/threat-warning.css"
-      ],
+      "matches": ["<all_urls>"],
+      "js": ["content/spa-bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/threat-warning.js"],
+      "css": ["content/threat-warning.css"],
       "run_at": "document_end"
     }
   ],
