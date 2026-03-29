@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthShell } from "./AuthShell.jsx";
 import { getExtensionState, patchExtensionState } from "../../lib/extensionBridge.js";
-import { FuturisticSwitch } from "../../components/FuturisticSwitch.jsx";
+import { SimpleOnOff } from "../../components/SimpleOnOff.jsx";
 import { PROTECTION_PREFERENCE_ITEMS } from "../../data/preferenceDefinitions.js";
 
 export default function ProtectionPreferencesPage() {
@@ -39,7 +39,7 @@ export default function ProtectionPreferencesPage() {
         protectionPrefs: prefs,
         auth: { stage: "notifications" },
       });
-      navigate("/auth/notifications");
+      navigate("/auth/notifications", { replace: true });
     } catch (e) {
       setError(e?.message || "Save failed");
     }
@@ -64,8 +64,10 @@ export default function ProtectionPreferencesPage() {
             key={key}
             className="border border-border bg-background/60 px-3 py-3 flex items-center justify-between gap-3 card-hover rounded-none"
           >
-            <span className="text-sm text-foreground pr-2">{label}</span>
-            <FuturisticSwitch id={`pp-${key}`} checked={!!prefs[key]} onChange={(v) => setKey(key, v)} />
+            <span className="text-sm text-foreground pr-2" id={`pp-${key}-lbl`}>
+              {label}
+            </span>
+            <SimpleOnOff labelledBy={`pp-${key}-lbl`} value={!!prefs[key]} onChange={(v) => setKey(key, v)} />
           </li>
         ))}
       </ul>

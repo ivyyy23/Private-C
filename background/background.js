@@ -1,4 +1,13 @@
+importScripts("trackerCatalog.js");
+
+/** Bundled API base (not user-configurable). Set at build/deploy if needed. */
 const DEFAULT_API_BASE = "http://127.0.0.1:3847";
+
+const TRACKER_LOG_KEY = "privateCTrackerLog";
+const TRACKER_HIT_TOTAL_KEY = "privateCTrackerHitTotal";
+const TRACKER_LOG_MAX = 350;
+const pendingTrackerHits = new Map();
+let trackerFlushTimer = null;
 
 function defaultAuth() {
   return {
@@ -64,8 +73,14 @@ const DEFAULT_STATE = {
     cookiesStopped: 0,
     privacyConcerns: 0,
     blockedSites: 0,
+    /** Legacy / manual; live network tally is privateCTrackerHitTotal */
+    trackersDetected: 0,
   },
   blockedSitesByHost: {},
+  /** Hostname → user chose "allow all cookies/trackers" for this site. */
+  allowAllTrackingByHost: {},
+  /** Hostname → user completed the first-visit privacy prompt (any choice). */
+  firstVisitDecided: {},
 };
 
 const THREAT_HOSTS = {
@@ -88,6 +103,241 @@ const THREAT_HOSTS = {
       "Credential trap suspected. Do not enter passwords or MFA on this page.",
   },
 };
+
+function shouldOfferFirstVisitChoice(url, host) {
+  if (!url || !host) return false;
+  if (!/^https?:\/\//i.test(url)) return false;
+  const h = host.toLowerCase();
+  if (h === "localhost" || h === "127.0.0.1" || h.endsWith(".localhost")) return false;
+  return true;
+}
+
+/** Show floating Private-C chip on normal web pages (not localhost). */
+function isPageBadgeEligible(url) {
+  try {
+    const u = new URL(url);
+    if (!/^https?:$/i.test(u.protocol)) return false;
+    const h = u.hostname.toLowerCase();
+    if (h === "localhost" || h === "127.0.0.1" || h.endsWith(".localhost")) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function tabScanSessionKey(tabId) {
+  return `tabScan_${tabId}`;
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  chrome.storage.session.remove(tabScanSessionKey(tabId)).catch(() => {});
+});
+
+function truncateUrl(url, max) {
+  if (!url || url.length <= max) return url || "";
+  return url.slice(0, max) + "…";
+}
+
+function trackerLogKey(sourceSite, trackerDomain) {
+  return `${sourceSite}\n${trackerDomain}`;
+}
+
+function enrichTrackerStorageEntry(base) {
+  const label = base.label || base.tracker_domain;
+  const site = base.source_site;
+  const action = base.action || "observed";
+  return {
+    ...base,
+    plain_reason: `${label} was contacted while you browsed ${site}. This host is classified as ${base.category} tracking or analytics.`,
+    technical_reason: `Network ${base.last_resource_type || "request"} to ${base.tracker_domain}. Last URL sample: ${base.last_sample_url || "—"}`,
+    recommendation:
+      action === "allowed (site)"
+        ? "This site is set to “Allow all,” so Private-C still records the request for transparency."
+        : "Shown from live browser network activity. Use Block (cookies & trackers) for this site in the toolbar popup to record a stricter preference.",
+  };
+}
+
+function mergeTrackerBatchIntoLog(log, batch) {
+  let totalNewHits = 0;
+  const next = [...log];
+  for (const b of batch) {
+    totalNewHits += b.hit_count;
+    const idx = next.findIndex((e) => e.source_site === b.source_site && e.tracker_domain === b.tracker_domain);
+    if (idx >= 0) {
+      const existing = next[idx];
+      next[idx] = enrichTrackerStorageEntry({
+        ...existing,
+        hit_count: (existing.hit_count || 1) + b.hit_count,
+        timestamp: new Date(b.last_ts).toISOString(),
+        last_resource_type: b.last_resource_type,
+        last_sample_url: b.last_sample_url,
+        action: b.action,
+        label: b.label || existing.label,
+        category: b.category || existing.category,
+      });
+    } else {
+      next.unshift(
+        enrichTrackerStorageEntry({
+          id: crypto.randomUUID(),
+          tracker_domain: b.tracker_domain,
+          source_site: b.source_site,
+          category: b.category,
+          label: b.label,
+          action: b.action,
+          timestamp: new Date(b.last_ts).toISOString(),
+          hit_count: b.hit_count,
+          last_resource_type: b.last_resource_type,
+          last_sample_url: b.last_sample_url,
+        })
+      );
+    }
+  }
+  next.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return { log: next.length > TRACKER_LOG_MAX ? next.slice(0, TRACKER_LOG_MAX) : next, totalNewHits };
+}
+
+function queueTrackerNetworkHit({ pageHost, trackerHost, rule, resourceType, url, allowedBySite }) {
+  const key = trackerLogKey(pageHost, trackerHost);
+  const prev = pendingTrackerHits.get(key);
+  const action = allowedBySite ? "allowed (site)" : "observed";
+  if (prev) {
+    prev.hit_count += 1;
+    prev.last_resource_type = resourceType;
+    prev.last_sample_url = truncateUrl(url, 220);
+    prev.last_ts = Date.now();
+    prev.action = action;
+  } else {
+    pendingTrackerHits.set(key, {
+      source_site: pageHost,
+      tracker_domain: trackerHost,
+      category: rule.category,
+      label: rule.label,
+      hit_count: 1,
+      last_resource_type: resourceType,
+      last_sample_url: truncateUrl(url, 220),
+      last_ts: Date.now(),
+      action,
+    });
+  }
+  scheduleTrackerFlush();
+}
+
+function scheduleTrackerFlush() {
+  if (trackerFlushTimer) {
+    clearTimeout(trackerFlushTimer);
+  }
+  trackerFlushTimer = setTimeout(() => {
+    trackerFlushTimer = null;
+    flushTrackerHitsToStorage().catch((e) => console.warn("Private-C tracker log flush", e));
+  }, 500);
+}
+
+async function flushTrackerHitsToStorage() {
+  if (pendingTrackerHits.size === 0) return;
+  const batch = [...pendingTrackerHits.values()];
+  pendingTrackerHits.clear();
+
+  const data = await chrome.storage.local.get([TRACKER_LOG_KEY, TRACKER_HIT_TOTAL_KEY]);
+  const prevLog = Array.isArray(data[TRACKER_LOG_KEY]) ? data[TRACKER_LOG_KEY] : [];
+  const { log, totalNewHits } = mergeTrackerBatchIntoLog(prevLog, batch);
+  const prevTotal = typeof data[TRACKER_HIT_TOTAL_KEY] === "number" ? data[TRACKER_HIT_TOTAL_KEY] : 0;
+
+  await chrome.storage.local.set({
+    [TRACKER_LOG_KEY]: log,
+    [TRACKER_HIT_TOTAL_KEY]: prevTotal + totalNewHits,
+  });
+}
+
+function isThirdPartyRequest(pageUrl, requestUrl) {
+  try {
+    const pu = new URL(pageUrl);
+    const ru = new URL(requestUrl);
+    if (!/^https?:$/i.test(pu.protocol) || !/^https?:$/i.test(ru.protocol)) return false;
+    const ph = pu.hostname.toLowerCase();
+    const rh = ru.hostname.toLowerCase();
+    return rh !== ph;
+  } catch {
+    return false;
+  }
+}
+
+chrome.webRequest.onCompleted.addListener(
+  (details) => {
+    if (details.tabId == null || details.tabId < 0) return;
+    if (details.type === "main_frame") return;
+    let reqHost;
+    try {
+      reqHost = new URL(details.url).hostname.toLowerCase();
+    } catch {
+      return;
+    }
+    const rule = self.pcClassifyTrackerHost(reqHost);
+    if (!rule) return;
+
+    chrome.tabs.get(details.tabId, (tab) => {
+      if (chrome.runtime.lastError || !tab?.url) return;
+      if (!isThirdPartyRequest(tab.url, details.url)) return;
+
+      getStateForTrackerListener()
+        .then((state) => {
+          if (state.protectionPrefs?.trackers === false) return;
+          let pageHost;
+          try {
+            pageHost = new URL(tab.url).hostname.toLowerCase();
+          } catch {
+            return;
+          }
+          const allowAll = !!state.allowAllTrackingByHost?.[pageHost];
+          queueTrackerNetworkHit({
+            pageHost,
+            trackerHost: reqHost,
+            rule,
+            resourceType: details.type,
+            url: details.url,
+            allowedBySite: allowAll,
+          });
+        })
+        .catch(() => {});
+    });
+  },
+  { urls: ["<all_urls>"] }
+);
+
+/**
+ * Content scripts often are not ready when tabs.onUpdated fires "complete".
+ * Retry sendMessage, then programmatically inject the script once and retry.
+ */
+async function postToContentScript(tabId, message) {
+  if (tabId == null || tabId < 0) {
+    return false;
+  }
+  const delays = [0, 40, 100, 200, 400, 700, 1100];
+  for (const ms of delays) {
+    if (ms) await sleep(ms);
+    try {
+      await chrome.tabs.sendMessage(tabId, message);
+      return true;
+    } catch {
+      /* receiving end not ready */
+    }
+  }
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId, allFrames: false },
+      files: ["content/threat-warning.js"],
+    });
+    await sleep(100);
+    await chrome.tabs.sendMessage(tabId, message);
+    return true;
+  } catch (e) {
+    console.debug("Private-C postToContentScript failed:", e?.message || e);
+    return false;
+  }
+}
 
 function mergeDeep(target, source) {
   const out = { ...target };
@@ -119,6 +369,8 @@ function normalizeState(raw) {
   s.notificationPrefs = { ...defaultNotificationPrefs(), ...(raw.notificationPrefs || {}) };
   s.audio = { ...defaultAudio(), ...(raw.audio || {}) };
   s.blockedSitesByHost = { ...(raw.blockedSitesByHost || {}) };
+  s.allowAllTrackingByHost = { ...DEFAULT_STATE.allowAllTrackingByHost, ...(raw.allowAllTrackingByHost || {}) };
+  s.firstVisitDecided = { ...DEFAULT_STATE.firstVisitDecided, ...(raw.firstVisitDecided || {}) };
 
   if (raw.isLoggedIn && raw.auth === undefined) {
     s.auth = {
@@ -131,12 +383,7 @@ function normalizeState(raw) {
   return s;
 }
 
-async function getApiBase() {
-  const data = await chrome.storage.local.get("privateCApiBase");
-  const url = data.privateCApiBase;
-  if (typeof url === "string" && url.trim()) {
-    return url.replace(/\/$/, "");
-  }
+function getApiBase() {
   return DEFAULT_API_BASE;
 }
 
@@ -157,7 +404,7 @@ function scheduleServerSync() {
     try {
       const state = await getState();
       const clientId = await getOrCreateClientId();
-      const base = await getApiBase();
+      const base = getApiBase();
       await fetch(`${base}/api/state`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -174,7 +421,24 @@ async function getState() {
   return normalizeState(data.privateCState);
 }
 
+/** Short-lived cache so webRequest onCompleted does not await storage on every hit. */
+let trackerListenerStateCache = null;
+let trackerListenerStateCacheUntil = 0;
+
+async function getStateForTrackerListener() {
+  const now = Date.now();
+  if (trackerListenerStateCache && now < trackerListenerStateCacheUntil) {
+    return trackerListenerStateCache;
+  }
+  const s = await getState();
+  trackerListenerStateCache = s;
+  trackerListenerStateCacheUntil = now + 400;
+  return s;
+}
+
 async function setState(nextState) {
+  trackerListenerStateCache = null;
+  trackerListenerStateCacheUntil = 0;
   await chrome.storage.local.set({ privateCState: nextState });
   scheduleServerSync();
 }
@@ -230,6 +494,74 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "PRIVATE_C_SITE_SCAN_RESULT") {
+    const tabId = sender.tab?.id;
+    const payload = message.payload;
+    if (tabId == null || !payload?.host) {
+      sendResponse({ ok: false });
+      return false;
+    }
+    chrome.storage.session
+      .set({ [tabScanSessionKey(tabId)]: payload })
+      .then(() => sendResponse({ ok: true }))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === "PRIVATE_C_GET_POPUP_CONTEXT") {
+    (async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const state = await getState();
+        if (!tab?.id || !tab.url) {
+          sendResponse({ ok: true, tab: null, scan: null, sitePrefs: null, state });
+          return;
+        }
+        let host = "";
+        let eligible = false;
+        try {
+          const u = new URL(tab.url);
+          host = u.hostname.toLowerCase();
+          eligible = isPageBadgeEligible(tab.url);
+        } catch {
+          /* ignore */
+        }
+        let scan = null;
+        try {
+          const data = await chrome.storage.session.get(tabScanSessionKey(tab.id));
+          scan = data[tabScanSessionKey(tab.id)] ?? null;
+        } catch {
+          /* ignore */
+        }
+        let trackersForTab = [];
+        try {
+          const logData = await chrome.storage.local.get(TRACKER_LOG_KEY);
+          const fullLog = Array.isArray(logData[TRACKER_LOG_KEY]) ? logData[TRACKER_LOG_KEY] : [];
+          trackersForTab = host ? fullLog.filter((e) => e.source_site === host).slice(0, 20) : [];
+        } catch {
+          /* ignore */
+        }
+        sendResponse({
+          ok: true,
+          tab: { id: tab.id, url: tab.url, host, eligible },
+          scan,
+          trackersForTab,
+          sitePrefs:
+            eligible && host
+              ? {
+                  allowAll: !!state.allowAllTrackingByHost?.[host],
+                  decided: !!state.firstVisitDecided?.[host],
+                }
+              : null,
+          state,
+        });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e) });
+      }
+    })();
+    return true;
+  }
+
   if (message?.type === "PRIVATE_C_GET_STATE") {
     getState().then((state) => sendResponse({ ok: true, state }));
     return true;
@@ -293,6 +625,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (message?.type === "PRIVATE_C_SITE_PRIVACY_CHOICE") {
+    const host = typeof message.payload?.host === "string" ? message.payload.host.trim().toLowerCase() : "";
+    const allowAll = !!message.payload?.allowAll;
+    if (!host) {
+      sendResponse({ ok: false, error: "missing host" });
+      return false;
+    }
+    getState()
+      .then(async (state) => {
+        const next = mergeDeep(state, {
+          firstVisitDecided: { ...state.firstVisitDecided, [host]: true },
+          allowAllTrackingByHost: { ...state.allowAllTrackingByHost, [host]: allowAll },
+        });
+        await setState(next);
+        sendResponse({ ok: true });
+      })
+      .catch((e) => sendResponse({ ok: false, error: String(e) }));
+    return true;
+  }
+
   if (message?.type === "PRIVATE_C_SYNC_NOW") {
     scheduleServerSync();
     sendResponse({ ok: true });
@@ -309,44 +661,66 @@ chrome.tabs.onUpdated.addListener(async (_tabId, changeInfo, tab) => {
 
   try {
     const currentUrl = new URL(tab.url);
-    const host = currentUrl.hostname;
+    const host = currentUrl.hostname.toLowerCase();
     const state = await getState();
-
-    const baseCookieTick = state.preferences.cookies ? Math.floor(Math.random() * 4) + 1 : 0;
-    const privacyTick = Object.values(state.preferences).filter(Boolean).length > 0 ? 1 : 0;
 
     const nextState = {
       ...state,
-      stats: {
-        ...state.stats,
-        cookiesStopped: state.stats.cookiesStopped + baseCookieTick,
-        privacyConcerns: state.stats.privacyConcerns + privacyTick,
-      },
+      stats: { ...state.stats },
     };
 
+    const allowAll = !!state.allowAllTrackingByHost?.[host];
+    const decided = !!state.firstVisitDecided?.[host];
+
+    if (isPageBadgeEligible(tab.url)) {
+      await postToContentScript(tab.id, {
+        type: "PRIVATE_C_PAGE_BADGE",
+        payload: {
+          host,
+          needPrivacyChoice: shouldOfferFirstVisitChoice(tab.url, host) && !decided,
+        },
+      });
+    }
+
     const threat = THREAT_HOSTS[host];
-    if (threat && !state.blockedSitesByHost[host]) {
+    if (threat && !state.blockedSitesByHost[host] && !allowAll) {
       nextState.stats.blockedSites = state.stats.blockedSites + 1;
       nextState.blockedSitesByHost = {
         ...state.blockedSitesByHost,
         [host]: true,
       };
 
-      const assistantLine = threat.assistantLine || threat.reason;
-
+      let assistantLine = threat.assistantLine || threat.reason;
+      const heuristicScore = threat.severity === "high" ? "risky" : "caution";
       try {
-        await chrome.tabs.sendMessage(tab.id, {
-          type: "PRIVATE_C_THREAT_FOUND",
-          payload: {
+        const base = getApiBase();
+        const res = await fetch(`${base}/api/site-evaluation`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
             host,
-            severity: threat.severity,
-            reason: threat.reason,
-            assistantLine,
-          },
+            url: tab.url,
+            pageText: threat.reason,
+            heuristicScore,
+          }),
         });
-      } catch {
-        /* tab may not have content script (restricted pages) */
+        const data = await res.json();
+        if (data?.ok && typeof data.explanation === "string" && data.explanation.trim()) {
+          assistantLine = data.explanation.trim();
+        }
+      } catch (e) {
+        console.debug("Private-C site-evaluation skipped", e?.message || e);
       }
+
+      await postToContentScript(tab.id, {
+        type: "PRIVATE_C_THREAT_FOUND",
+        payload: {
+          host,
+          severity: threat.severity,
+          reason: threat.reason,
+          assistantLine,
+        },
+      });
 
       maybeSpeakThreat(state, assistantLine);
     }

@@ -271,6 +271,18 @@ export const summary_stats = {
   privacy_alerts_today: 8,
 };
 
+/** Seed for the compact “new detections” strip (max 5 shown; replace with live feed). */
+export const new_detections_seed = [
+  {
+    id: "nd-1",
+    text: "Tracker activity detected. Cookie Cutter recommends blocking background session tracking.",
+  },
+  { id: "nd-2", text: "facebook.com — Meta Pixel intercepted." },
+  { id: "nd-3", text: "suspicious-login.net — phishing pattern flagged." },
+  { id: "nd-4", text: "fingerprintjs.com — fingerprinting script blocked." },
+  { id: "nd-5", text: "doubleclick.net — third-party tracker stopped." },
+];
+
 export const recent_activity = [
   { id: 1, text: "facebook.com — tracker blocked (Meta Pixel)", time: "2m ago",  type: "tracker" },
   { id: 2, text: "suspicious-login.net — site blocked (phishing)", time: "18m ago", type: "blocked" },

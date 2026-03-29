@@ -1,8 +1,10 @@
 #private-c-threat-warning {
   position: fixed;
-  top: 16px;
-  right: 16px;
-  width: min(420px, calc(100vw - 24px));
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  width: auto;
+  max-width: none;
   z-index: 2147483647;
   font-family: "Inter", system-ui, sans-serif;
   background: rgba(12, 12, 12, 0.97);
@@ -17,19 +19,59 @@
   border-color: rgba(255, 255, 255, 0.18);
 }
 
-#private-c-threat-warning .pcw-row {
+#private-c-threat-warning .pcw-head {
   display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
-  padding: 0.75rem 0.85rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.45rem 0.35rem 0.65rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-#private-c-threat-warning .pcw-char {
-  width: 56px;
-  height: auto;
+#private-c-threat-warning .pcw-brand {
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  font-weight: 600;
+}
+
+#private-c-threat-warning .pcw-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: -2px -2px -2px 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+}
+
+#private-c-threat-warning .pcw-close:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
+
+#private-c-threat-warning .pcw-row {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  padding: 0.65rem 0.75rem 0.7rem;
+}
+
+#private-c-threat-warning .pcw-icon-wrap {
   flex-shrink: 0;
-  color: #f0f0f0;
-  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.08));
+  padding-top: 0.1rem;
+  color: rgba(240, 240, 240, 0.9);
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.06));
+}
+
+#private-c-threat-warning .pcw-shield {
+  display: block;
 }
 
 #private-c-threat-warning .pcw-col {
@@ -37,25 +79,16 @@
   flex: 1;
 }
 
-#private-c-threat-warning .pcw-label {
-  margin: 0 0 0.35rem;
-  font-size: 0.65rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.45);
-  font-weight: 600;
-}
-
 #private-c-threat-warning .pcw-dialogue {
-  margin: 0 0 0.5rem;
-  font-size: 0.84rem;
+  margin: 0 0 0.45rem;
+  font-size: 0.82rem;
   line-height: 1.45;
   color: #f2f2f2;
 }
 
 #private-c-threat-warning .pcw-meta {
-  margin: 0.25rem 0;
-  font-size: 0.78rem;
+  margin: 0.2rem 0;
+  font-size: 0.75rem;
   color: rgba(255, 255, 255, 0.55);
   line-height: 1.35;
 }
@@ -64,12 +97,12 @@
   display: flex;
   justify-content: flex-end;
   gap: 0.35rem;
-  margin-top: 0.65rem;
-  padding-top: 0.55rem;
+  margin-top: 0.55rem;
+  padding-top: 0.5rem;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-#private-c-threat-warning button {
+#private-c-threat-warning .pcw-actions button {
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 0;
   padding: 0.4rem 0.65rem;
@@ -98,6 +131,234 @@
 #private-c-threat-warning .ghost:hover {
   border-color: rgba(255, 255, 255, 0.35);
   color: #fff;
+}
+
+/* First-visit cookies / trackers choice */
+#private-c-first-visit {
+  position: fixed;
+  bottom: 14px;
+  left: 12px;
+  right: 12px;
+  z-index: 2147483646;
+  max-width: 420px;
+  margin: 0 auto;
+  font-family: "Inter", system-ui, sans-serif;
+  background: rgba(12, 12, 12, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0;
+  color: #e8e8e8;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 12px 40px rgba(0, 0, 0, 0.55);
+  animation: private-c-slide 280ms ease;
+}
+
+#private-c-first-visit .pcf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.45rem 0.35rem 0.65rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#private-c-first-visit .pcf-brand {
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  font-weight: 600;
+}
+
+#private-c-first-visit .pcf-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+}
+
+#private-c-first-visit .pcf-close:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
+
+#private-c-first-visit .pcf-title {
+  margin: 0.65rem 0.75rem 0.15rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #f2f2f2;
+}
+
+#private-c-first-visit .pcf-host {
+  margin: 0 0.75rem 0.35rem;
+  font-size: 0.78rem;
+  font-family: ui-monospace, monospace;
+  color: rgba(255, 255, 255, 0.55);
+  word-break: break-all;
+}
+
+#private-c-first-visit .pcf-hint {
+  margin: 0 0.75rem 0.65rem;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+#private-c-first-visit .pcf-toggle-row {
+  display: flex;
+  margin: 0 0.75rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0;
+  overflow: hidden;
+}
+
+#private-c-first-visit .pcf-toggle-btn {
+  flex: 1;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+}
+
+#private-c-first-visit .pcf-toggle-btn + .pcf-toggle-btn {
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+#private-c-first-visit .pcf-toggle-btn.pcf-toggle-active {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+#private-c-first-visit .pcf-continue {
+  display: block;
+  width: calc(100% - 1.5rem);
+  margin: 0 0.75rem 0.75rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  cursor: pointer;
+}
+
+#private-c-first-visit .pcf-continue:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* Transient page badge (shield + Private-C; optional Select options) */
+#private-c-page-badge {
+  position: fixed;
+  bottom: 14px;
+  right: 12px;
+  z-index: 2147483645;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: min(280px, calc(100vw - 24px));
+  padding: 0.45rem 0.55rem 0.5rem;
+  font-family: "Inter", system-ui, sans-serif;
+  background: rgba(12, 12, 12, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0;
+  color: #e8e8e8;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 10px 32px rgba(0, 0, 0, 0.45);
+  animation: private-c-slide 260ms ease;
+  transition: opacity 0.38s ease, transform 0.38s ease;
+}
+
+#private-c-page-badge.pcb-hiding {
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+}
+
+#private-c-page-badge .pcb-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+#private-c-page-badge .pcb-row-clickable {
+  cursor: pointer;
+}
+
+#private-c-page-badge .pcb-icon-wrap {
+  flex-shrink: 0;
+  color: rgba(240, 240, 240, 0.92);
+  line-height: 0;
+}
+
+#private-c-page-badge .pcb-icon-action {
+  cursor: pointer;
+  border-radius: 0;
+  outline-offset: 2px;
+}
+
+#private-c-page-badge .pcb-icon-action:hover {
+  color: #fff;
+}
+
+#private-c-page-badge .pcb-icon-action:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.55);
+}
+
+#private-c-page-badge .pcb-shield {
+  display: block;
+}
+
+#private-c-page-badge .pcb-textcol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+#private-c-page-badge .pcb-brand {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #f2f2f2;
+}
+
+#private-c-page-badge .pcb-sub {
+  font-size: 0.65rem;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+#private-c-page-badge .pcb-select-btn {
+  align-self: stretch;
+  margin-top: 0.05rem;
+  padding: 0.38rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+}
+
+#private-c-page-badge .pcb-select-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 @keyframes private-c-slide {

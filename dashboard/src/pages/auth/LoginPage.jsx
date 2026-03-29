@@ -47,7 +47,7 @@ export default function LoginPage() {
             onboardingComplete: false,
           },
         });
-        navigate("/auth/protection");
+        navigate("/auth/protection", { replace: true });
         return;
       }
 
@@ -56,17 +56,17 @@ export default function LoginPage() {
           isLoggedIn: true,
           auth: { ...state.auth, stage: "ready", emailVerified: true },
         });
-        navigate("/");
+        navigate("/", { replace: true });
         return;
       }
 
       if (state.account?.email === em) {
         const st = state.auth?.stage || "protection";
         await patchExtensionState({ isLoggedIn: true });
-        if (st === "verify") navigate("/auth/protection");
-        else if (st === "protection") navigate("/auth/protection");
-        else if (st === "notifications") navigate("/auth/notifications");
-        else navigate("/");
+        if (st === "verify") navigate("/auth/protection", { replace: true });
+        else if (st === "protection") navigate("/auth/protection", { replace: true });
+        else if (st === "notifications") navigate("/auth/notifications", { replace: true });
+        else navigate("/", { replace: true });
         return;
       }
 

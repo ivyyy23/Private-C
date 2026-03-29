@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthShell } from "./AuthShell.jsx";
 import { getExtensionState, patchExtensionState } from "../../lib/extensionBridge.js";
-import { FuturisticSwitch } from "../../components/FuturisticSwitch.jsx";
+import { SimpleOnOff } from "../../components/SimpleOnOff.jsx";
 import { playVoicePreview } from "../../lib/voiceAlerts.js";
 import { NOTIFICATION_PREFERENCE_ITEMS } from "../../data/preferenceDefinitions.js";
 
@@ -77,7 +77,7 @@ export default function NotificationPreferencesPage() {
           emailVerified: true,
         },
       });
-      navigate("/");
+      navigate("/", { replace: true });
     } catch (e) {
       setError(e?.message || "Save failed");
     }
@@ -104,8 +104,10 @@ export default function NotificationPreferencesPage() {
               key={key}
               className="border border-border bg-background/60 px-3 py-3 flex items-center justify-between gap-3 rounded-none"
             >
-              <span className="text-sm text-foreground">{label}</span>
-              <FuturisticSwitch id={`np-${key}`} checked={!!np[key]} onChange={(v) => setN(key, v)} />
+              <span className="text-sm text-foreground" id={`np-${key}-lbl`}>
+                {label}
+              </span>
+              <SimpleOnOff labelledBy={`np-${key}-lbl`} value={!!np[key]} onChange={(v) => setN(key, v)} />
             </li>
           ))}
         </ul>

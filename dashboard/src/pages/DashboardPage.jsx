@@ -20,11 +20,13 @@ import {
   recent_activity,
   daily_activity,
   top_domains,
+  new_detections_seed,
 } from "../data/mockData.js";
 import { Card } from "../components/Card.jsx";
 import { Header } from "../components/Header.jsx";
-import { AlertAssistant } from "../components/AlertAssistant.jsx";
+import { DetectionsStrip } from "../components/DetectionsStrip.jsx";
 import { useExtensionState } from "../hooks/useExtensionState.js";
+import { useTrackerHitTotal } from "../hooks/useTrackerLog.js";
 
 const GRID = "hsl(0 0% 100% / 0.06)";
 const SERIES_A = "#9a9a9a";
@@ -41,7 +43,7 @@ const STAT_CARDS = [
   },
   {
     key: "total_blocked_trackers",
-    label: "Blocked Trackers",
+    label: "Tracker requests (network)",
     icon: Activity,
     color: "text-foreground/90",
     bg: "bg-muted",
@@ -72,13 +74,16 @@ const ACTIVITY_TYPE_STYLE = {
   login: "bg-muted text-foreground/80 border border-border",
 };
 
-function statValue(key, state, hasChrome) {
+function statValue(key, state, hasChrome, trackerHitTotal) {
   if (!hasChrome || !state?.stats) {
     return summary_stats[key];
   }
   const s = state.stats;
   if (key === "total_blocked_sites") return s.blockedSites ?? summary_stats[key];
-  if (key === "total_blocked_trackers") return s.cookiesStopped ?? summary_stats[key];
+  if (key === "total_blocked_trackers") {
+    if (typeof trackerHitTotal === "number") return trackerHitTotal;
+    return s.trackersDetected ?? s.cookiesStopped ?? summary_stats[key];
+  }
   if (key === "privacy_alerts_today") return s.privacyConcerns ?? summary_stats[key];
   return summary_stats[key];
 }
@@ -99,34 +104,33 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 export default function DashboardPage() {
   const { state, hasChrome } = useExtensionState();
+  const trackerHitTotal = useTrackerHitTotal();
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-background">
+    <div className="flex-1 flex flex-col min-h-0 bg-background">
       <Header
         title="Dashboard"
         subtitle={`Overview · ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`}
       />
 
-      <main className="flex-1 px-6 py-6 space-y-6">
-        <AlertAssistant
-          variant="info"
-          message="Tracker activity detected. Cookie Cutter recommends blocking background session tracking."
-          className="max-w-xl"
-        />
+      <main className="flex-1 min-h-0 overflow-y-auto px-6 py-6 space-y-6">
+        <DetectionsStrip initialItems={new_detections_seed} />
 
         {hasChrome && state && (
-          <p className="text-xs text-muted-foreground -mt-2">
+          <p className="text-xs text-muted-foreground">
             Live counters reflect this profile. Charts are synthetic until telemetry binds. Site-risk voice uses Chrome TTS; ElevenLabs runs from notification setup when keyed.
           </p>
         )}
 
-        <section className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           {STAT_CARDS.map(({ key, label, icon: Icon, color, bg, border }) => (
             <Card key={key} glow className={`border ${border}`}>
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">{label}</p>
-                  <p className={`text-3xl font-bold ${color}`}>{statValue(key, state, hasChrome)}</p>
+                  <p className={`text-2xl sm:text-3xl font-bold ${color}`}>
+                    {statValue(key, state, hasChrome, trackerHitTotal)}
+                  </p>
                 </div>
                 <div className={`${bg} p-2 rounded-none border border-border`}>
                   <Icon size={18} className={color} />

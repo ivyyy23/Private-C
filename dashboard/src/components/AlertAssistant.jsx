@@ -40,7 +40,7 @@ export function AlertAssistant({ message, variant = "info", className }) {
   return (
     <aside
       className={clsx(
-        "flex gap-4 border bg-card/95 p-4 max-w-md glow-edge backdrop-blur-sm rounded-none",
+        "flex w-full gap-4 border bg-card/95 p-4 glow-edge backdrop-blur-sm rounded-none",
         border,
         className
       )}

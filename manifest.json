@@ -5,7 +5,19 @@
   "version": "1.0.0",
   "action": {
     "default_title": "Private-C",
-    "default_popup": "popup/popup.html"
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/logo.png",
+      "32": "assets/logo.png",
+      "48": "assets/logo.png",
+      "128": "assets/logo.png"
+    }
+  },
+  "icons": {
+    "16": "assets/logo.png",
+    "32": "assets/logo.png",
+    "48": "assets/logo.png",
+    "128": "assets/logo.png"
   },
   "options_ui": {
     "page": "dashboard/dist/index.html",
@@ -17,7 +29,9 @@
   "permissions": [
     "storage",
     "tabs",
-    "tts"
+    "tts",
+    "scripting",
+    "webRequest"
   ],
   "host_permissions": [
     "<all_urls>",
@@ -34,7 +48,7 @@
       "css": [
         "content/threat-warning.css"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     }
   ],
   "web_accessible_resources": [

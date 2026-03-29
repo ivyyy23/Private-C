@@ -15,12 +15,39 @@
   <body>
     <main class="shell">
       <header class="topbar">
-        <div>
-          <p class="mini">PRIVATE-C</p>
-          <h1>Privacy Stats</h1>
+        <div class="topbar-brand">
+          <img id="popupLogo" class="popup-logo" width="44" height="44" alt="" />
+          <div class="topbar-titles">
+            <p class="mini">PRIVATE-C</p>
+            <h1>Privacy Stats</h1>
+          </div>
         </div>
         <span id="accountBadge" class="account-badge">Guest</span>
       </header>
+
+      <section id="thisPageSection" class="this-page hidden">
+        <h2 class="section-title">This tab</h2>
+        <p id="pageHost" class="page-host"></p>
+        <p id="pageScanAgent" class="scan-agent" aria-live="polite"></p>
+        <div class="visit-row">
+          <button type="button" id="focusThisTab" class="linkish" hidden>Return to this page</button>
+          <a id="openPageNewTab" class="linkish" href="#" hidden>Open page in new tab</a>
+        </div>
+        <div id="sitePrefsInline" class="site-prefs-inline hidden">
+          <p class="mini-label">Cookies &amp; trackers (this site)</p>
+          <div class="toggle-row" role="group" aria-label="Cookies and trackers">
+            <button type="button" id="prefBlock" class="toggle-btn toggle-active">Block</button>
+            <button type="button" id="prefAllow" class="toggle-btn">Allow all</button>
+          </div>
+          <button type="button" id="saveSitePrefs" class="save-prefs-btn">Save for this site</button>
+          <p id="sitePrefsStatus" class="prefs-status" role="status"></p>
+        </div>
+        <div id="tabTrackersWrap" class="tab-trackers hidden">
+          <p class="mini-label">Trackers on this site (live network)</p>
+          <ul id="tabTrackersList" class="tab-trackers-list"></ul>
+          <p id="tabTrackersEmpty" class="tab-trackers-empty hidden">No catalog-matched tracker requests yet for this tab.</p>
+        </div>
+      </section>
 
       <section id="loginPrompt" class="login-prompt hidden">
         <p>Finish setup to unlock live monitoring and custom preferences.</p>
@@ -50,8 +77,8 @@
       </section>
 
       <section class="dash-actions">
-        <button type="button" id="openDashboard" class="dash-btn">Open full dashboard</button>
-        <p class="dash-hint">Same layout &amp; routes as Private-C-dash (extension tab).</p>
+        <button type="button" id="openDashboard" class="dash-btn ghost-dash">Open full dashboard</button>
+        <p class="dash-hint">Optional — site check and preferences work here without the dashboard.</p>
       </section>
     </main>
 

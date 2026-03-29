@@ -1,38 +1,101 @@
-import { useState, useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { Search, Filter, ChevronRight } from "lucide-react";
 import { blocked_sites } from "../data/mockData.js";
 import { Card } from "../components/Card.jsx";
 import { Badge } from "../components/Badge.jsx";
 import { Header } from "../components/Header.jsx";
 import { DetailDrawer } from "../components/DetailDrawer.jsx";
+import { SimpleOnOff } from "../components/SimpleOnOff.jsx";
+import { useExtensionState } from "../hooks/useExtensionState.js";
+import { patchExtensionState } from "../lib/extensionBridge.js";
 
 const RISK_LEVELS = ["all", "critical", "high", "medium", "low"];
 
+function hostKeyFromUrl(url) {
+  return String(url || "")
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .trim();
+}
+
 export default function BlockedSitesPage() {
+  const { state, hasChrome } = useExtensionState();
   const [search, setSearch] = useState("");
   const [riskFilter, setRiskFilter] = useState("all");
   const [selected, setSelected] = useState(null);
+  const [allowBusy, setAllowBusy] = useState(null);
 
   const rows = useMemo(() => {
-    return blocked_sites.filter((s) => {
+    const blockedMap = state?.blockedSitesByHost || {};
+    const blockedHosts = Object.entries(blockedMap)
+      .filter(([, v]) => v)
+      .map(([h]) => h.toLowerCase());
+
+    const mockByHost = {};
+    for (const s of blocked_sites) {
+      mockByHost[hostKeyFromUrl(s.url)] = s;
+    }
+
+    const seen = new Set();
+    const out = [];
+
+    for (const host of blockedHosts) {
+      const base = mockByHost[host] || {
+        id: `live-${host}`,
+        url: host,
+        reason: "Flagged by Private-C",
+        risk_level: "medium",
+        timestamp: new Date().toISOString(),
+        action: "blocked",
+      };
+      out.push({ ...base, hostKey: host });
+      seen.add(host);
+    }
+
+    for (const s of blocked_sites) {
+      const hk = hostKeyFromUrl(s.url);
+      if (!seen.has(hk)) {
+        out.push({ ...s, hostKey: hk });
+      }
+    }
+
+    return out;
+  }, [state?.blockedSitesByHost]);
+
+  const filtered = useMemo(() => {
+    return rows.filter((s) => {
       const matchSearch =
         s.url.toLowerCase().includes(search.toLowerCase()) ||
         s.reason.toLowerCase().includes(search.toLowerCase());
       const matchRisk = riskFilter === "all" || s.risk_level === riskFilter;
       return matchSearch && matchRisk;
     });
-  }, [search, riskFilter]);
+  }, [rows, search, riskFilter]);
+
+  const setAllowAll = useCallback(
+    async (hk, allow) => {
+      if (!hasChrome || !state) return;
+      setAllowBusy(hk);
+      try {
+        await patchExtensionState({
+          allowAllTrackingByHost: { ...(state.allowAllTrackingByHost || {}), [hk]: allow },
+          firstVisitDecided: { ...(state.firstVisitDecided || {}), [hk]: true },
+        });
+      } catch {
+        /* ignore */
+      } finally {
+        setAllowBusy(null);
+      }
+    },
+    [hasChrome, state]
+  );
 
   return (
-    <div className="flex-1 flex flex-col bg-background">
-      <Header
-        title="Blocked Sites"
-        subtitle={`${blocked_sites.length} sites in database`}
-      />
+    <div className="flex min-h-0 flex-1 flex-col bg-background">
+      <Header title="Blocked Sites" subtitle={`${rows.length} entries · Allow all turns off Private-C threat handling for that host`} />
 
-      <main className="flex-1 px-6 py-6 space-y-4">
-        {/* Controls */}
-        <div className="flex flex-col sm:flex-row gap-3">
+      <main className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-6">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
             <input
@@ -40,20 +103,21 @@ export default function BlockedSitesPage() {
               placeholder="Search URL or reason…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-card border border-border rounded-none pl-9 pr-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/55 focus:ring-1 focus:ring-primary/20"
+              className="w-full rounded-none border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/55 focus:outline-none focus:ring-1 focus:ring-primary/20"
             />
           </div>
           <div className="flex items-center gap-2">
-            <Filter size={14} className="text-muted-foreground/50 shrink-0" />
+            <Filter size={14} className="shrink-0 text-muted-foreground/50" />
             <div className="flex gap-1">
               {RISK_LEVELS.map((l) => (
                 <button
                   key={l}
+                  type="button"
                   onClick={() => setRiskFilter(l)}
-                  className={`text-xs px-2.5 py-1.5 rounded-none capitalize font-medium transition-colors ${
+                  className={`rounded-none px-2.5 py-1.5 text-xs font-medium capitalize transition-colors ${
                     riskFilter === l
-                      ? "bg-primary/20 text-primary border border-primary/40"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                      ? "border border-primary/40 bg-primary/20 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
                 >
                   {l}
@@ -63,19 +127,19 @@ export default function BlockedSitesPage() {
           </div>
         </div>
 
-        {/* Table */}
         <Card glow>
-          {rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No results match your filters.</p>
+          {filtered.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">No results match your filters.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Website", "Reason", "Risk", "Date / Time", "Action", ""].map((h) => (
+                    {["Website", "Reason", "Risk", "Date / Time", "Action", "Allow all", ""].map((h) => (
                       <th
                         key={h}
-                        className="text-left text-[10px] uppercase tracking-widest text-muted-foreground font-semibold pb-3 pr-4 last:pr-0"
+                        title={h === "Allow all" ? "On = allow all cookies & trackers for this host (Private-C won’t flag it). Off = restrict." : undefined}
+                        className="pb-3 pr-4 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground last:pr-0"
                       >
                         {h}
                       </th>
@@ -83,28 +147,54 @@ export default function BlockedSitesPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {rows.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="group cursor-pointer hover:bg-muted/50 transition-colors"
-                      onClick={() => setSelected(row)}
-                    >
-                      <td className="py-3 pr-4 font-mono text-foreground text-xs">{row.url}</td>
-                      <td className="py-3 pr-4 text-muted-foreground capitalize">{row.reason}</td>
-                      <td className="py-3 pr-4"><Badge level={row.risk_level} /></td>
-                      <td className="py-3 pr-4 text-muted-foreground text-xs whitespace-nowrap">
-                        {new Date(row.timestamp).toLocaleString()}
-                      </td>
-                      <td className="py-3 pr-4">
-                        <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-none px-2 py-0.5 capitalize">
-                          {row.action}
-                        </span>
-                      </td>
-                      <td className="py-3 text-muted-foreground/40 group-hover:text-primary transition-colors">
-                        <ChevronRight size={14} />
-                      </td>
-                    </tr>
-                  ))}
+                  {filtered.map((row) => {
+                    const hk = row.hostKey;
+                    const allowed = !!(state?.allowAllTrackingByHost && state.allowAllTrackingByHost[hk]);
+                    return (
+                      <tr
+                        key={row.id + hk}
+                        className="group cursor-pointer transition-colors hover:bg-muted/50"
+                        onClick={() => setSelected(row)}
+                      >
+                        <td className="py-3 pr-4 font-mono text-xs text-foreground">{row.url}</td>
+                        <td className="py-3 pr-4 capitalize text-muted-foreground">{row.reason}</td>
+                        <td className="py-3 pr-4">
+                          <Badge level={row.risk_level} />
+                        </td>
+                        <td className="whitespace-nowrap py-3 pr-4 text-xs text-muted-foreground">
+                          {new Date(row.timestamp).toLocaleString()}
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span className="rounded-none border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs capitalize text-emerald-400">
+                            {row.action}
+                          </span>
+                        </td>
+                        <td
+                          className="py-3 pr-4"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {hasChrome && state ? (
+                            <>
+                              <span id={`allow-${hk}`} className="sr-only">
+                                Allow all cookies and trackers for {row.url}
+                              </span>
+                              <SimpleOnOff
+                                value={allowed}
+                                disabled={allowBusy === hk}
+                                onChange={(v) => setAllowAll(hk, v)}
+                                labelledBy={`allow-${hk}`}
+                              />
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 text-muted-foreground/40 transition-colors group-hover:text-primary">
+                          <ChevronRight size={14} />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

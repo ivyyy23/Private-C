@@ -1,6 +1,5 @@
 import { HashRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { Sidebar } from "./components/Sidebar.jsx";
-import { ThemeToggle } from "./components/ThemeToggle.jsx";
 import { useExtensionState } from "./hooks/useExtensionState.js";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import BlockedSitesPage from "./pages/BlockedSitesPage.jsx";
@@ -13,12 +12,20 @@ import ProtectionPreferencesPage from "./pages/auth/ProtectionPreferencesPage.js
 import NotificationPreferencesPage from "./pages/auth/NotificationPreferencesPage.jsx";
 
 function MainLayout() {
-  const { state, hasChrome } = useExtensionState();
+  const { state, hasChrome, hydrated } = useExtensionState();
 
   if (!hasChrome) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background px-6 text-center text-sm text-muted-foreground max-w-md mx-auto">
         Open this app from the Private-C extension (toolbar → Open full dashboard, or Extension options) to enable authentication and storage.
+      </div>
+    );
+  }
+
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background text-sm text-muted-foreground">
+        Loading…
       </div>
     );
   }
@@ -41,7 +48,7 @@ function MainLayout() {
   return (
     <div className="flex min-h-screen font-sans bg-background text-foreground">
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <Outlet />
       </div>
     </div>
@@ -69,7 +76,6 @@ export default function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      <ThemeToggle />
     </HashRouter>
   );
 }

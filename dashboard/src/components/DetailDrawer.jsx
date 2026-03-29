@@ -22,7 +22,7 @@ export function DetailDrawer({ item, onClose }) {
       <aside className="fixed right-0 top-0 h-full w-full max-w-md bg-sidebar border-l border-border z-50 flex flex-col shadow-2xl text-sidebar-accent-foreground">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <span className="text-sm font-semibold text-foreground tracking-wide uppercase">
-            Why this was blocked
+            {item.action === "blocked" ? "Why this was blocked" : "Tracker detail"}
           </span>
           <button
             type="button"
@@ -52,7 +52,10 @@ export function DetailDrawer({ item, onClose }) {
               <Info size={14} className="text-foreground" />
               <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Plain explanation</span>
             </div>
-            <p className="text-sm text-foreground/90 leading-relaxed">{item.plain_reason}</p>
+            <p className="text-sm text-foreground/90 leading-relaxed">
+              {item.plain_reason ||
+                `${item.label || item.tracker_domain || "This host"} appeared in network activity for ${item.source_site || "this site"}.`}
+            </p>
           </section>
 
           <section className="rounded-none bg-muted border border-border p-4">
@@ -60,12 +63,19 @@ export function DetailDrawer({ item, onClose }) {
               <AlertTriangle size={14} className="text-warning" />
               <span className="text-xs font-semibold text-warning uppercase tracking-wider">Technical detail</span>
             </div>
-            <p className="text-sm text-muted-foreground leading-relaxed font-mono">{item.technical_reason}</p>
+            <p className="text-sm text-muted-foreground leading-relaxed font-mono">
+              {item.technical_reason ||
+                [item.last_resource_type && `Type: ${item.last_resource_type}`, item.last_sample_url && `URL: ${item.last_sample_url}`]
+                  .filter(Boolean)
+                  .join(" · ") || "—"}
+            </p>
           </section>
 
           <section className="rounded-none bg-success/8 border border-success/25 p-4">
             <p className="text-xs font-semibold text-success uppercase tracking-wider mb-2">Recommended action</p>
-            <p className="text-sm text-foreground/90 leading-relaxed">{item.recommendation}</p>
+            <p className="text-sm text-foreground/90 leading-relaxed">
+              {item.recommendation || "Review tracker activity in the dashboard and adjust per-site preferences in the toolbar popup."}
+            </p>
           </section>
 
           {item.reason && (
