@@ -1,0 +1,122 @@
+[
+  {
+    "id": "dummy-001",
+    "tracker_domain": "google-analytics.com",
+    "source_site": "news.example.com",
+    "category": "analytics",
+    "label": "Google Analytics",
+    "action": "observed",
+    "timestamp": "2026-03-28T10:15:00.000Z",
+    "hit_count": 24,
+    "last_resource_type": "script",
+    "last_sample_url": "https://www.google-analytics.com/analytics.js"
+  },
+  {
+    "id": "dummy-002",
+    "tracker_domain": "connect.facebook.net",
+    "source_site": "shop.example.com",
+    "category": "social tracker",
+    "label": "Facebook Connect",
+    "action": "observed",
+    "timestamp": "2026-03-28T09:40:00.000Z",
+    "hit_count": 12,
+    "last_resource_type": "script",
+    "last_sample_url": "https://connect.facebook.net/en_US/sdk.js"
+  },
+  {
+    "id": "dummy-003",
+    "tracker_domain": "doubleclick.net",
+    "source_site": "shop.example.com",
+    "category": "ad network",
+    "label": "DoubleClick",
+    "action": "observed",
+    "timestamp": "2026-03-27T16:22:00.000Z",
+    "hit_count": 8,
+    "last_resource_type": "xmlhttprequest",
+    "last_sample_url": "https://ad.doubleclick.net/activity"
+  },
+  {
+    "id": "dummy-004",
+    "tracker_domain": "hotjar.com",
+    "source_site": "app.example.com",
+    "category": "session recording",
+    "label": "Hotjar",
+    "action": "observed",
+    "timestamp": "2026-03-27T14:05:00.000Z",
+    "hit_count": 3,
+    "last_resource_type": "script",
+    "last_sample_url": "https://static.hotjar.com/c/hotjar-123.js"
+  },
+  {
+    "id": "dummy-005",
+    "tracker_domain": "scorecardresearch.com",
+    "source_site": "news.example.com",
+    "category": "analytics",
+    "label": "Scorecard Research",
+    "action": "observed",
+    "timestamp": "2026-03-26T11:30:00.000Z",
+    "hit_count": 15,
+    "last_resource_type": "image",
+    "last_sample_url": "https://sb.scorecardresearch.com/p"
+  },
+  {
+    "id": "dummy-006",
+    "tracker_domain": "googletagmanager.com",
+    "source_site": "news.example.com",
+    "category": "tag manager",
+    "label": "Google Tag Manager",
+    "action": "allowed (site)",
+    "timestamp": "2026-03-26T08:00:00.000Z",
+    "hit_count": 6,
+    "last_resource_type": "script",
+    "last_sample_url": "https://www.googletagmanager.com/gtm.js?id=GTM-XXXX"
+  },
+  {
+    "id": "dummy-007",
+    "tracker_domain": "adservice.google.com",
+    "source_site": "shop.example.com",
+    "category": "ad network",
+    "label": "Google Ad Service",
+    "action": "observed",
+    "timestamp": "2026-03-25T19:45:00.000Z",
+    "hit_count": 4,
+    "last_resource_type": "sub_frame",
+    "last_sample_url": "https://googleads.g.doubleclick.net/pagead/html"
+  },
+  {
+    "id": "dummy-008",
+    "tracker_domain": "cdn.optimizely.com",
+    "source_site": "app.example.com",
+    "category": "analytics",
+    "label": "Optimizely",
+    "action": "observed",
+    "timestamp": "2026-03-24T13:20:00.000Z",
+    "hit_count": 2,
+    "last_resource_type": "script",
+    "last_sample_url": "https://cdn.optimizely.com/js/123.js"
+  },
+  {
+    "id": "dummy-009",
+    "tracker_domain": "clarity.ms",
+    "source_site": "news.example.com",
+    "category": "session recording",
+    "label": "Microsoft Clarity",
+    "action": "observed",
+    "timestamp": "2026-03-23T09:10:00.000Z",
+    "hit_count": 9,
+    "last_resource_type": "script",
+    "last_sample_url": "https://www.clarity.ms/tag/abc"
+  },
+  {
+    "id": "dummy-010",
+    "tracker_domain": "segment.com",
+    "source_site": "app.example.com",
+    "category": "analytics",
+    "label": "Segment",
+    "action": "observed",
+    "timestamp": "2026-03-22T15:55:00.000Z",
+    "hit_count": 1,
+    "last_resource_type": "xmlhttprequest",
+    "last_sample_url": "https://api.segment.io/v1/t"
+  }
+]

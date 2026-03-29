@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card } from "../components/Card.jsx";
 import { Header } from "../components/Header.jsx";
-import { Settings, SlidersHorizontal, Palette } from "lucide-react";
+import { Settings, SlidersHorizontal, Palette, Sparkles } from "lucide-react";
 import { ThemeToggle } from "../components/ThemeToggle.jsx";
 import { SimpleOnOff } from "../components/SimpleOnOff.jsx";
 import { PrefInfo } from "../components/PrefInfo.jsx";
@@ -15,6 +15,7 @@ import {
 const SECTIONS = [
   { id: "preferences", label: "Preferences" },
   { id: "appearance", label: "Appearance" },
+  { id: "sample-data", label: "Sample data" },
   { id: "about", label: "About" },
 ];
 
@@ -26,6 +27,8 @@ export default function SettingsPage() {
   const [notificationPrefs, setNotificationPrefs] = useState(null);
   const [prefError, setPrefError] = useState("");
   const [prefBusy, setPrefBusy] = useState(false);
+  const [dummyBusy, setDummyBusy] = useState(false);
+  const [dummyMsg, setDummyMsg] = useState("");
 
   const scrollTo = useCallback((id) => {
     document.getElementById(`settings-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -73,6 +76,34 @@ export default function SettingsPage() {
   }
 
   const prefsReady = legacyPrefs && protectionPrefs && notificationPrefs;
+
+  async function loadSampleData() {
+    if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) {
+      setDummyMsg("Open this page from the extension to load sample data.");
+      return;
+    }
+    setDummyBusy(true);
+    setDummyMsg("");
+    try {
+      const res = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ type: "PRIVATE_C_LOAD_DUMMY_DATA" }, (r) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          resolve(r);
+        });
+      });
+      if (!res?.ok) {
+        throw new Error(res?.error || "Load failed");
+      }
+      setDummyMsg(`Loaded demo extension state and ${res.trackers ?? 0} tracker log rows. Refresh other dashboard tabs if open.`);
+    } catch (e) {
+      setDummyMsg(e?.message || "Could not load sample data.");
+    } finally {
+      setDummyBusy(false);
+    }
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -253,12 +284,42 @@ export default function SettingsPage() {
               </Card>
             </section>
 
+            <section id="settings-sample-data">
+              <Card glow className="w-full">
+                <div className="mb-4 flex items-center gap-3">
+                  <Sparkles className="text-foreground" size={22} />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">3. Sample data</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Merges <span className="font-mono">data/dummy/</span> into this profile (signed-in demo user, blocked hosts, tracker
+                      log). Safe for local UI testing; replace with real browsing data anytime.
+                    </p>
+                  </div>
+                </div>
+                {dummyMsg && (
+                  <p className={`mb-3 text-xs ${dummyMsg.includes("Loaded") ? "text-success" : "text-destructive"}`}>{dummyMsg}</p>
+                )}
+                <button
+                  type="button"
+                  onClick={loadSampleData}
+                  disabled={dummyBusy}
+                  className="w-full rounded-none border border-border bg-muted py-2.5 text-sm font-semibold uppercase tracking-wider text-foreground hover:bg-muted/80 disabled:opacity-40"
+                >
+                  {dummyBusy ? "Loading…" : "Load sample data"}
+                </button>
+                <p className="mt-3 text-[10px] text-muted-foreground leading-relaxed">
+                  Server-side demo: from repo root run <span className="font-mono">npm run seed:dummy</span> (MongoDB required) for API
+                  collections + user <span className="font-mono">demo@private-c.local</span> / <span className="font-mono">DummyPass12345</span>.
+                </p>
+              </Card>
+            </section>
+
             <section id="settings-about">
               <Card className="w-full">
                 <div className="flex items-start gap-2 text-muted-foreground">
                   <Settings size={18} className="mt-0.5 shrink-0" />
                   <p className="text-xs leading-relaxed">
-                    <span className="font-medium text-foreground">3. About.</span> Site trust copy is resolved on the Private-C API:
+                    <span className="font-medium text-foreground">4. About.</span> Site trust copy is resolved on the Private-C API:
                     cached in MongoDB when available; otherwise Gemini runs on the server and the result is stored. Privacy policies for
                     hosts listed in <code className="font-mono text-[10px]">POLICY_MONITOR_HOSTS</code> are refreshed on a weekly timer.
                     Extension sync still posts to the configured backend; API URL and keys are not exposed in this UI.

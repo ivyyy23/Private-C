@@ -836,7 +836,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const current = await getState();
         const next = mergeDeep(current, dummyState);
         await setState(next);
-        const logArr = Array.isArray(dummyLog) ? dummyLog : [];
+        const rawLog = Array.isArray(dummyLog) ? dummyLog : [];
+        const logArr = rawLog.map((e) => enrichTrackerStorageEntry({ ...e }));
         const hits = logArr.reduce((a, e) => a + Math.max(1, Number(e.hit_count) || 1), 0);
         await chrome.storage.local.set({
           privateCTrackerLog: logArr,

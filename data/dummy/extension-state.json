@@ -1,0 +1,94 @@
+{
+  "isLoggedIn": true,
+  "account": {
+    "email": "demo@private-c.local",
+    "createdAt": 1735689600000
+  },
+  "auth": {
+    "stage": "ready",
+    "emailVerified": true,
+    "verificationSentAt": null,
+    "onboardingComplete": true
+  },
+  "preferences": {
+    "cookies": true,
+    "location": true,
+    "financial": true,
+    "health": false,
+    "identity": true,
+    "social": true
+  },
+  "protectionPrefs": {
+    "siteSecurityAlerts": true,
+    "trackers": true,
+    "privacyViolations": true,
+    "screenScrollMonitoring": false,
+    "timeSpentAntiDetailing": false,
+    "cookiesBackground": true,
+    "backgroundMicrophone": true,
+    "backgroundCamera": true,
+    "hiddenBackgroundTasks": true
+  },
+  "notificationPrefs": {
+    "trackerPopupAlerts": true,
+    "cookieCutterAlerts": true,
+    "siteRiskAlerts": true,
+    "cameraMicrophoneAlerts": true,
+    "backgroundTaskAlerts": true,
+    "privacyPolicySummaryAlerts": false
+  },
+  "audio": {
+    "level": "medium",
+    "elevenLabsApiKey": "",
+    "elevenLabsVoiceId": "21m00Tcm4TlvDq8ikWAM"
+  },
+  "stats": {
+    "cookiesStopped": 42,
+    "privacyConcerns": 18,
+    "blockedSites": 5,
+    "trackersDetected": 127
+  },
+  "blockedSitesByHost": {
+    "malware.example": true,
+    "phish-demo.example": true,
+    "spam-offers.test": true
+  },
+  "allowAllTrackingByHost": {
+    "partner-cdn.example": true
+  },
+  "firstVisitDecided": {
+    "news.example.com": true,
+    "shop.example.com": true,
+    "app.example.com": true
+  },
+  "sitePrivacyRules": {
+    "news.example.com": {
+      "mode": "block_all",
+      "updatedAt": 1735689600000
+    },
+    "shop.example.com": {
+      "mode": "custom",
+      "version": 1,
+      "cookies": "block_analytics",
+      "trackers": {
+        "social": true,
+        "analytics": true,
+        "fingerprinting": false,
+        "third_party": true,
+        "block_ip_endpoints": true
+      },
+      "storage": { "blockLocal": false, "blockSession": false, "allowSelectedOnly": true },
+      "permissions": { "geoBlocked": false, "cameraBlocked": false, "micBlocked": false, "askEveryTime": true },
+      "accountProtection": { "warnLogin": true, "scanPolicyBeforeLogin": false, "delaySubmit": false },
+      "updatedAt": 1735600000000
+    }
+  },
+  "devLogging": false,
+  "serverApiBase": "",
+  "authToken": "",
+  "safeBrowsingApiKey": "",
+  "phishtankApiKey": "",
+  "urlhausAuthKey": "",
+  "threatIntelUrlhausEnabled": true,
+  "threatIntelCacheTtlMs": 2700000
+}
