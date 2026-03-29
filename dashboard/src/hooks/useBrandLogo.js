@@ -11,7 +11,7 @@ export function useBrandLogo() {
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
       setSrc(`${chrome.runtime.getURL("assets/Logo.png")}?v=2`);
     } else {
-      setSrc("../../public/Logo.png?v=2");
+      setSrc("../../../Logo.png");
     }
   }, []);
 
