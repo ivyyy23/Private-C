@@ -1,14 +1,45 @@
 import { useEffect, useState } from "react";
+import { isStandaloneDashboard } from "../lib/standaloneStorage.js";
 
 export const TRACKER_LOG_STORAGE_KEY = "privateCTrackerLog";
 export const TRACKER_HIT_TOTAL_KEY = "privateCTrackerHitTotal";
 
-/** Live rows from background network observer (chrome.storage.local). */
+function readStandaloneLog() {
+  try {
+    const r = localStorage.getItem(TRACKER_LOG_STORAGE_KEY);
+    return Array.isArray(r ? JSON.parse(r) : null) ? JSON.parse(r) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStandaloneHitTotal() {
+  try {
+    const r = localStorage.getItem(TRACKER_HIT_TOTAL_KEY);
+    const n = r != null ? Number(JSON.parse(r)) : NaN;
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Live rows from background network observer (chrome.storage.local) or standalone localStorage. */
 export function useTrackerLog() {
   const [log, setLog] = useState([]);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    if (isStandaloneDashboard()) {
+      const read = () => {
+        setLog(readStandaloneLog());
+        setHydrated(true);
+      };
+      read();
+      const fn = () => read();
+      window.addEventListener("privatec-standalone-mutate", fn);
+      return () => window.removeEventListener("privatec-standalone-mutate", fn);
+    }
+
     if (typeof chrome === "undefined" || !chrome.storage?.local) {
       setHydrated(true);
       return;
@@ -41,6 +72,14 @@ export function useTrackerHitTotal() {
   const [total, setTotal] = useState(null);
 
   useEffect(() => {
+    if (isStandaloneDashboard()) {
+      const read = () => setTotal(readStandaloneHitTotal());
+      read();
+      const fn = () => read();
+      window.addEventListener("privatec-standalone-mutate", fn);
+      return () => window.removeEventListener("privatec-standalone-mutate", fn);
+    }
+
     if (typeof chrome === "undefined" || !chrome.storage?.local) {
       setTotal(null);
       return;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isStandaloneDashboard, STANDALONE_STATE_KEY } from "../lib/standaloneStorage.js";
 
 function enrichPrivateCState(raw) {
   if (!raw || typeof raw !== "object") return null;
@@ -9,12 +10,30 @@ function enrichPrivateCState(raw) {
   };
 }
 
+function readStandaloneState() {
+  try {
+    const s = localStorage.getItem(STANDALONE_STATE_KEY);
+    return enrichPrivateCState(s ? JSON.parse(s) : null);
+  } catch {
+    return null;
+  }
+}
+
 export function useExtensionState() {
   const [state, setState] = useState(null);
   const [hasChrome, setHasChrome] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    if (isStandaloneDashboard()) {
+      setHasChrome(true);
+      setState(readStandaloneState());
+      setHydrated(true);
+      const onMutate = () => setState(readStandaloneState());
+      window.addEventListener("privatec-standalone-mutate", onMutate);
+      return () => window.removeEventListener("privatec-standalone-mutate", onMutate);
+    }
+
     if (typeof chrome === "undefined" || !chrome.storage?.local) {
       setHasChrome(false);
       setState(null);
